@@ -1,0 +1,61 @@
+ {   
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    // python scripts/network_inference_dataset.py -i <path/to/network.pth> -d <path/to/dataset_dir/> -o <path/to/output_dir/> -b 16 -w 8
+    "version": "0.2.0",
+    "configurations": [
+        
+
+        {
+            "name": "/home/jayaram/mount_ada_node/dream_paper/DREAM/scripts/network_inference_dataset.py",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/jayaram/mount_ada_node/dream_paper/DREAM/scripts/network_inference_dataset.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "-i",
+                "/home/jayaram/mount_ada_node/dream_paper/DREAM/trained_models/baxter_dream_vgg_q.pth",
+                "-d",
+                "/home/jayaram/dream_paper_data/synthetic/baxter_synth_test_dr_limited",
+                "-b",
+                "2",
+                "-w",
+                "3",
+                "-o",
+                "inference/results/"
+            ]
+        },
+        {
+            "name": "scripts/train_network.py",
+            "type": "python",
+            "request": "launch",
+            "program": "scripts/train_network.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--i",
+                "data/baxter_synth_test_dr/",
+                "--t",
+                "0.8",
+                "-m",
+                "manip_configs/baxter.yaml",
+                "-ar",
+                "arch_configs/dream_vgg_q.yaml",
+                "-e",
+                "2",
+                "-lr",
+                "0.00015",
+                "-b",
+                "20",
+                "-w",
+                "3",
+                "-o",
+                "training/results/"
+            ]
+        }
+    ]
+}
+// Number of workers added.
+//python scripts/train_network.py -i data/synthetic/panda_synth_train_dr/ -t 0.8 -m manip_configs/panda.yaml -ar arch_configs/dream_hourglass_example.yaml -e 25 -lr 0.00015 -b 128 -w 16 -o <path/to/output_dir/>
