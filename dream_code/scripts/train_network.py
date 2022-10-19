@@ -403,6 +403,7 @@ def train_network(args):
 
     # Print to screen
     print("Network configuration: {}".format(network_config))
+    # instantiating dream network from network config
     dream_network = dream.create_network_from_config_data(network_config)
     if args.resume_training:
         dream_network.model.load_state_dict(
@@ -461,6 +462,33 @@ def train_network(args):
     print("TRAINING NETWORK ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("")
+
+    print("Net:{}".format(dream_network.model))
+
+    #dream network is inspired form HourGlass network which is collection of modules (5 in encoder, 2 in decoder)
+    #each module has set of layers like conv2d, relu etc
+
+    #iterate over network layers individually to unfreeze
+    num_layers = 0
+    modules_to_unfreeze = ['layer_0_5_down', 'upsample_0_4', 'upsample_0_3', 'heads_0']
+    if args.retrain_network:
+        for name, param in dream_network.model.named_parameters():
+            print(name, '\t\t', param.shape)
+            if any(x in name for x in modules_to_unfreeze):
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+            num_layers = num_layers + 1
+    print('total layers in network: {}'.format(num_layers))  #wts, bias layers are treated differently
+
+    # for name, param in dream_network.model.named_parameters():
+    #     print(name, '\t\t', param.shape, '\t\t', param.requires_grad)
+
+    #print layers in a particular module of network
+    print(dream_network.model.module.layer_0_1_down)
+
+    # for name, module in dream_network.model.named_children():
+    #     print(name, '\t\t', module)
 
     last_epoch_timestamp = 0.0
 
@@ -675,6 +703,13 @@ def train_network(args):
     print("Total training time: {} seconds.".format(time.time() - training_start_time))
     print("")
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('true'):
+        return True
+    elif v.lower() in ('false'):
+        return False
 
 if __name__ == "__main__":
 
@@ -780,6 +815,13 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Resumes training. The epoch argument provided now is the new training duration. All arguments must match the previously trained networks.",
+    )
+    parser.add_argument(
+        "-rt",
+        "--retrain-network",
+        type=str2bool,
+        default=False,
+        help="Retraines network after unfreezing last few modules.",
     )
 
     args = parser.parse_args()

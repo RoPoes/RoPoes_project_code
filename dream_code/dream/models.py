@@ -869,7 +869,7 @@ class DreamHourglass(nn.Module):
 
             output_head_0 = self.heads_0(y_0_out)
             # Conv2d(64, 64) + ReLU(inplace=True)) + Conv2d(64, 32) + ReLU(inplace=True)) + Conv2d(32, self.n_keypoints)
-            # output_head_0: (4, 64, 100, 100)
+            # output_head_0: (4, 8, 100, 100)
 
         # Output heads
         outputs = []
