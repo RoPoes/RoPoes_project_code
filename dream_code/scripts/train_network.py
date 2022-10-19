@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
 from tqdm import tqdm
 
 import sys
-sys.path.append("/home/jayaram/mount_ada_node/dream_paper/DREAM")
+sys.path.append("dream_code")
 from dream import *
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
