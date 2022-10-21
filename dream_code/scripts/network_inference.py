@@ -14,7 +14,7 @@ import torchvision.transforms as TVTransforms
 import cv2
 
 import sys
-sys.path.append("/home/jayaram/robot_manipulation_drake/ropoes_project_code/ropoes_snippets_temp/Literature-Review-Arm-Pose-Estimation/Ropoes/dream_code")
+sys.path.append("/home/jayaram/robot_manipulation_drake/Ropoes_project_code/dream_code")
 from dream import *
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

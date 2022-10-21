@@ -10,7 +10,9 @@ import sys
 import itertools
 from copy import deepcopy
 import cv2
-sys.path.append('/home/jayaram/robot_manipulation_drake/ropoes_project_code/ropoes_snippets_temp/Literature-Review-Arm-Pose-Estimation/Ropoes')
+import keyboard
+import json
+sys.path.append('/home/jayaram/robot_manipulation_drake/Ropoes_project_code/dream_code')
 from dream_code.scripts.network_inference import network_inference
 
 from pydrake.common import FindResourceOrThrow, temp_directory
@@ -216,6 +218,8 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
 
     #create list of sensors
     sensors = []
+    #create list of projection matrices
+    projection_matrices = []
 
     #generate points in a circle around the arm for a particular radius
     r = 2
@@ -250,7 +254,14 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
             # X_WB = xyz_rpy_deg([x, y, 0.75], [-90, 0, 90]) 
             delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])   
             X_WB = xyz_rpy_deg([r, 0, 0.75], [-90, 0, 90])
-            X_WB = delta_wrt_world_z  @  X_WB   
+            X_WB = delta_wrt_world_z  @  X_WB  
+
+            #determine P for this camera position
+            R = np.array(X_WB.rotation().matrix())
+            t = X_WB.translation()
+            intrinsic_matrix = intrinsics.intrinsic_matrix()
+            P = intrinsic_matrix @ np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1]).reshape(1, -1)))
+            projection_matrices.append(P)
 
             # print('rotation matrix: {}'.format(type(np.array(X_WB_2.rotation().matrix()))))
             #roll, pitch, yaw along X, Y Z directions (fixed angle representation)
@@ -284,7 +295,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
     # sensors.append(CameraSystem(0, meshcat, diagram, context))
     # sensors.append(CameraSystem(1, meshcat, diagram, context))
 
-    return diagram, visualizer, scene_graph, sensors
+    return diagram, visualizer, scene_graph, sensors, projection_matrices
 
 
 def initialize_simulation(diagram):
@@ -297,18 +308,19 @@ def takePic(scene_graph, sensor, context, camera_number = 1, track_no = 1, sim_p
     diagram_context = context #diagram.CreateDefaultContext()
     sensor_context = sensor.GetMyMutableContextFromRoot(diagram_context)
     sg_context = scene_graph.GetMyMutableContextFromRoot(diagram_context)
-    color = sensor.color_image_output_port().Eval(sensor_context).data
+    color = sensor.color_image_output_port().Eval(sensor_context).data   #rgb image
     depth = sensor.depth_image_32F_output_port().Eval(sensor_context).data.squeeze(2)
     label = sensor.label_image_output_port().Eval(sensor_context).data
     #save images
-    cv2.imwrite("r_" + str(track_no) + "_c_" + str(camera_number) + "_" + "img_" + str(sim_pic_count) + ".jpg", cv2.cvtColor(color, cv2.COLOR_RGBA2BGRA))
+    arm_conf_name = "r_" + str(track_no) + "_c_" + str(camera_number) + "_" + "img_" + str(sim_pic_count)
+    cv2.imwrite(arm_conf_name + ".jpg", cv2.cvtColor(color, cv2.COLOR_RGBA2BGRA))
     # fig, ax = plt.subplots(1, 1, figsize=(15, 10))
     # ax.imshow(color)
     # ax[1].imshow(depth)
     # ax[2].imshow(label)
     #plt.show()
 
-    return color, depth
+    return color, depth, arm_conf_name
 
 def triangulation_DLT(P1, P2, kp1, kp2):
     A = [kp1[1]*P1[2,:] - P1[1,:],
@@ -325,6 +337,58 @@ def triangulation_DLT(P1, P2, kp1, kp2):
     #print(Vh[3,0:3]/Vh[3,3])
     return Vh[3,0:3]/Vh[3,3]
 
+def get_3d_joints():
+    pass
+
+def orient_arms(scene_graph, sensor, context, camera_no, track_no, sim_count_pic):
+    #step1: get arm from scene
+    diagram_context = context #diagram.CreateDefaultContext()
+    sensor_context = sensor.GetMyMutableContextFromRoot(diagram_context)
+    sg_context = scene_graph.GetMyMutableContextFromRoot(diagram_context)
+    color = sensor.color_image_output_port().Eval(sensor_context).data   #rgb image
+    depth = sensor.depth_image_32F_output_port().Eval(sensor_context).data.squeeze(2)
+
+    #step2: change individual link positions
+
+    #step3: get 3d points in that particular arm conf
+    key_points_3d = get_3d_joints()
+
+    #step4: Take pic after orienting diff inks in arm
+    color, depth, arm_conf_name = takePic(scene_graph, sensor, context, camera_no, track_no, sim_count_pic)
+    
+    return key_points_3d, color, depth, arm_conf_name
+
+def create_json(arm_conf_name, P, key_points_3d):  #n*3
+    n_points = len(key_points_3d)
+    kp_homogneous_3d = np.c_(key_points_3d, np.ones(n_points))  #n*4
+    kp_homogenous_2d = np.dot(P, kp_homogneous_3d.T)  #3*n
+    kp_homogenous_2d = kp_homogenous_2d.T  #n*3
+    kp_homogenous_2d = kp_homogenous_2d / kp_homogenous_2d[: ,2]
+    key_points_2d = kp_homogenous_2d[:, :2]  #n*2
+
+    kps_list = []
+    joint_names = ["iiwa7_link_0", "iiwa7_link_1", "iiwa7_link_2", "iiwa7_link_3", "iiwa7_link_4", "iiwa7_link_5", "iiwa7_link_6", "iiwa7_link_7"]
+    for i,joint_name in enumerate(joint_names):
+        kps_list.append({"name": joint_name,
+					    "location": key_points_3d[i, :],
+					    "projected_location": key_points_2d[i, :]})
+
+    #create json file in w mode and insert data 
+    with open(arm_conf_name + '.json', 'w') as f:
+        data_dict = {"camera_data":
+                            {
+                                "location_worldframe": [ -75.051300048828125, 47.982898712158203, 91.198799133300781 ],
+                                "quaternion_xyzw_worldframe": [ 0.047899998724460602, 0.078100003302097321, -0.52090001106262207, 0.84869998693466187 ]
+                            },
+	                "objects": [
+		                    {
+                                "class": "kuka",
+                                "keypoints": kps_list
+                            }
+                        ]
+                   }
+        json.dumps(data_dict, f)
+
 # Capture 
 def generate_dataset(args, sim_time_step):
     images_sensors = []
@@ -333,14 +397,24 @@ def generate_dataset(args, sim_time_step):
     #transformations b/w every pair of cameras in multi camera system
     n_cameras = 10
     n_tracks = 4
-    diagram, visualizer, scene_graph, sensors = create_scene(sim_time_step, n_cameras, n_tracks)
+    diagram, visualizer, scene_graph, sensors, projection_matrices = create_scene(sim_time_step, n_cameras, n_tracks)
 
     print('total no of sensors: {}'.format(len(sensors)))
     simulator = initialize_simulation(diagram)
     for track_no in range(n_tracks):
         for camera_no in range(n_cameras):
-            color, depth = takePic(scene_graph, sensors[(track_no * n_cameras) + camera_no], diagram.CreateDefaultContext(), camera_no, track_no, sim_count_pic)
-            images_sensors.append((color, depth))
+            n_arm_conf = 0  #conf of arm in current camera position
+            while(True):    # we can orient diff joints of arm and take pic (TakePic is called inside orient_arms)
+                key_points_3d, color, depth, arm_conf_name = orient_arms(scene_graph, sensors[(track_no * n_cameras) + camera_no], diagram.CreateDefaultContext(), camera_no, track_no, sim_count_pic)
+                images_sensors.append((color, depth))
+                n_arm_conf = n_arm_conf + 1
+
+                P = projection_matrices[(track_no * n_cameras) + camera_no]
+                #create json file based on the above information of 3d key points of joints and Projection matrix of current sensor
+                create_json(arm_conf_name, P, key_points_3d)
+
+                if(keyboard.is_pressed('q')):
+                    break
 
     # model_file = 'clutter_maskrcnn_model.pt'
     # if not os.path.exists(model_file):

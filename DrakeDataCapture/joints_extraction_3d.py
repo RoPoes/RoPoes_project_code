@@ -10,7 +10,7 @@ import sys
 import itertools
 from copy import deepcopy
 import cv2
-sys.path.append('/home/jayaram/robot_manipulation_drake/ropoes_project_code/ropoes_snippets_temp/Literature-Review-Arm-Pose-Estimation/Ropoes')
+sys.path.append('/home/jayaram/robot_manipulation_drake/Ropoes_project_code')
 from dream_code.scripts.network_inference import network_inference
 
 from pydrake.common import FindResourceOrThrow, temp_directory
@@ -298,8 +298,7 @@ def create_scene(sim_time_step=0.0001):
         sensor_2.query_object_input_port(),
     )
 
-    # this returns R,t b/w 2 every 2 pair of cameras (stereo calibration) in multi camera setup 
-    transformations = determine_transformation_matrices(R, t)
+    transformations = determine_transformation_matrices(R, t)   #these are Transformation matrices of individual camera
     print(transformations)
 
     #create list of sensors
@@ -387,7 +386,7 @@ def run_simulation(args, sim_time_step):
     images_sensors = []
     #initalize count of pics taken in simulation
     sim_count_pic = 1
-    #transformations b/w every pair of cameras in multi camera system
+
     diagram, visualizer, scene_graph, sensors, transformations, instrinsics, R, t = create_scene(sim_time_step)
 
     simulator = initialize_simulation(diagram)
@@ -417,10 +416,10 @@ def run_simulation(args, sim_time_step):
     #traingulate to get 3d keypoints from corresponding 2d keypoints in the left and right images
     #based on DLT
     Projection_matrices = []
-    for i, T in enumerate(transformations):
-        #val is T(R, t) of each camera in multi camera setup : 3*4
-        Projection_matrices.append(instrinsics[i] @ T)
+    for i in range(len(transformations)):
+        Projection_matrices.append(instrinsics[i] @ transformations[i])
     
+    #we try to use ransac based traingulation in multi camera setup
     for (camera_1_idx, camera_2_idx) in itertools.combinations(range(len(Projection_matrices)), 2):
         #we want to have diff combinations of  cameras
         #first camera in pair
@@ -450,6 +449,8 @@ def run_simulation(args, sim_time_step):
         for kp1, kp2, name in zip(keypoints_1, keypoints_2, kp_names):
             reconstructed_3d_point = triangulation_DLT(Projection_matrices[camera_1_idx], Projection_matrices[camera_2_idx], kp1, kp2)
             print('{}: {}'.format(name, reconstructed_3d_point))
+
+        #find way to refine the 3d kps (we expect 3d kps to be very similar for all pairs of cameras in setup ), this is not bundle adjustment as we precisely know camera positions in our setup
 
     # model_file = 'clutter_maskrcnn_model.pt'
     # if not os.path.exists(model_file):
@@ -531,7 +532,5 @@ if __name__ == "__main__":
     image_sensors = []   #this is list of image_sets taken from diff sensors. 
     image_sensors = run_simulation(args, sim_time_step=0.0001)  
 
-
-
-#python joints_extraction_3d.py -i ../dream_code/trained_models/kuka_dream_resnet_h.pth 
+#python Ropoes_project_code/DrakeDataCapture/joints_extraction_3d.py -i /home/jayaram/robot_manipulation_drake/trained_models/kuka_dream_resnet_h.pth
 
