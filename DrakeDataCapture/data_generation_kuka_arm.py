@@ -13,7 +13,7 @@ import cv2
 import keyboard
 import json
 sys.path.append('/home/jayaram/robot_manipulation_drake/Ropoes_project_code/dream_code')
-from dream_code.scripts.network_inference import network_inference
+#from dream_code.scripts.network_inference import network_inference
 
 from pydrake.common import FindResourceOrThrow, temp_directory
 from pydrake.geometry import (
@@ -51,6 +51,8 @@ from pydrake.systems.sensors import (
     CameraInfo,
     RgbdSensor,
 )
+
+from pydrake.all import InverseDynamicsController
 #from manipulation.scenarios import AddRgbdSensors
 
 # import torch
@@ -67,47 +69,47 @@ temp_dir = temp_directory()
 # Click the link and a MeshCat tab should appear in your browser.
 meshcat = StartMeshcat()
 
-class CameraSystem:
-    def __init__(self, idx, meshcat, diagram, context):
-        self.idx = idx
+# class CameraSystem:
+#     def __init__(self, idx, meshcat, diagram, context):
+#         self.idx = idx
         
-        # Read images
-        depth_im_read = diagram.GetOutputPort("camera{}_depth_image".format(idx)).Eval(context).data.squeeze()
-        self.depth_im = copy.deepcopy(depth_im_read)
-        self.depth_im[self.depth_im == np.inf] = 10.0
-        self.rgb_im = diagram.GetOutputPort('camera{}_rgb_image'.format(idx)).Eval(context).data
+#         # Read images
+#         depth_im_read = diagram.GetOutputPort("camera{}_depth_image".format(idx)).Eval(context).data.squeeze()
+#         self.depth_im = copy.deepcopy(depth_im_read)
+#         self.depth_im[self.depth_im == np.inf] = 10.0
+#         self.rgb_im = diagram.GetOutputPort('camera{}_rgb_image'.format(idx)).Eval(context).data
 
-        # Visualize
-        point_cloud = diagram.GetOutputPort("camera{}_point_cloud".format(idx)).Eval(context)
-        meshcat.SetObject(f"Camera {idx} point cloud", point_cloud)
+#         # Visualize
+#         point_cloud = diagram.GetOutputPort("camera{}_point_cloud".format(idx)).Eval(context)
+#         meshcat.SetObject(f"Camera {idx} point cloud", point_cloud)
 
-        # Get other info about the camera
-        cam = diagram.GetSubsystemByName('camera' +str(idx))
-        cam_context = cam.GetMyMutableContextFromRoot(context)
-        self.X_WC = cam.body_pose_in_world_output_port().Eval(cam_context)
-        self.cam_info = cam.depth_camera_info()
+#         # Get other info about the camera
+#         cam = diagram.GetSubsystemByName('camera' +str(idx))
+#         cam_context = cam.GetMyMutableContextFromRoot(context)
+#         self.X_WC = cam.body_pose_in_world_output_port().Eval(cam_context)
+#         self.cam_info = cam.depth_camera_info()
     
-    def project_depth_to_pC(self, depth_pixel):
-        """
-        project depth pixels to points in camera frame
-        using pinhole camera model
-        Input:
-            depth_pixels: numpy array of (nx3) or (3,)
-        Output:
-            pC: 3D point in camera frame, numpy array of (nx3)
-        """
-        # switch u,v due to python convention
-        v = depth_pixel[:,0]
-        u = depth_pixel[:,1]
-        Z = depth_pixel[:,2]
-        cx = self.cam_info.center_x()
-        cy = self.cam_info.center_y()
-        fx = self.cam_info.focal_x()
-        fy = self.cam_info.focal_y()
-        X = (u-cx) * Z/fx
-        Y = (v-cy) * Z/fy
-        pC = np.c_[X,Y,Z]
-        return pC
+#     def project_depth_to_pC(self, depth_pixel):
+#         """
+#         project depth pixels to points in camera frame
+#         using pinhole camera model
+#         Input:
+#             depth_pixels: numpy array of (nx3) or (3,)
+#         Output:
+#             pC: 3D point in camera frame, numpy array of (nx3)
+#         """
+#         # switch u,v due to python convention
+#         v = depth_pixel[:,0]
+#         u = depth_pixel[:,1]
+#         Z = depth_pixel[:,2]
+#         cx = self.cam_info.center_x()
+#         cy = self.cam_info.center_y()
+#         fx = self.cam_info.focal_x()
+#         fy = self.cam_info.focal_y()
+#         X = (u-cx) * Z/fx
+#         Y = (v-cy) * Z/fy
+#         pC = np.c_[X,Y,Z]
+#         return pC
 
 # To inspect our own URDF files.
 def model_inspector(filename): # filename will be model's sdf or urdf file
@@ -199,7 +201,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
 
     # Load iiwa arm in simulator.
     model_sdf = FindResourceOrThrow("drake/manipulation/models/iiwa_description/iiwa7/iiwa7_with_box_collision.sdf")
-    iiwa_1 = parser.AddModelFromFile(model_sdf, model_name = "iiwa_1")
+    model = parser.AddModelFromFile(model_sdf, model_name = "iiwa_1")
 
     # Weld the arm to the world so that it's fixed during the simulation.
     #model_frame = plant.GetFrameByName("table_top_center")
@@ -207,7 +209,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
     # Welding multi link robot on a particular pose
     plant.WeldFrames(
         frame_on_parent_P=plant.world_frame(),
-        frame_on_child_C=plant.GetFrameByName("iiwa_link_0", iiwa_1),
+        frame_on_child_C=plant.GetFrameByName("iiwa_link_0", model),
         X_PC=xyz_rpy_deg([0, 0, 0], [0, 0, 0]),
     )
 
@@ -260,7 +262,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
             R = np.array(X_WB.rotation().matrix())
             t = X_WB.translation()
             intrinsic_matrix = intrinsics.intrinsic_matrix()
-            P = intrinsic_matrix @ np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1]).reshape(1, -1)))
+            P = intrinsic_matrix @ np.vstack((np.hstack((R, t.reshape(-1, 1)))))
             projection_matrices.append(P)
 
             # print('rotation matrix: {}'.format(type(np.array(X_WB_2.rotation().matrix()))))
@@ -278,6 +280,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
             )
             sensors.append(sensor)
 
+
     # Finalize the plant after loading the scene.
     plant.Finalize()
     # We use the default context to calculate the transformation of the table
@@ -288,6 +291,8 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
     visualizer = MeshcatVisualizer.AddToBuilder(
         builder, scene_graph, meshcat,
         MeshcatVisualizerParams(role=Role.kPerception, prefix="visual"))
+    
+    iiwa_controller = iiwa_controller_fn(builder, plant, model)
 
     diagram = builder.Build()
 
@@ -295,7 +300,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
     # sensors.append(CameraSystem(0, meshcat, diagram, context))
     # sensors.append(CameraSystem(1, meshcat, diagram, context))
 
-    return diagram, visualizer, scene_graph, sensors, projection_matrices
+    return diagram, builder, plant, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices
 
 
 def initialize_simulation(diagram):
@@ -340,20 +345,51 @@ def triangulation_DLT(P1, P2, kp1, kp2):
 def get_3d_joints():
     pass
 
-def orient_arms(scene_graph, sensor, context, camera_no, track_no, sim_count_pic):
+def iiwa_controller_fn(builder, plant, model):
+    Kp = np.full(7, 100)
+    Ki = 2 * np.sqrt(Kp)
+    Kd = np.full(7, 1)
+    iiwa_controller = builder.AddSystem(InverseDynamicsController(plant, Kp, Ki, Kd, False))
+    iiwa_controller.set_name("iiwa_controller")
+    #create feedback loop
+    #plant state output to controller input
+    #controller output to plant actuation input
+    builder.Connect(plant.get_state_output_port(model),
+                    iiwa_controller.get_input_port_estimated_state())
+    builder.Connect(iiwa_controller.get_output_port_control(),
+                    plant.get_actuation_input_port())
+
+    return iiwa_controller
+
+def iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector):    
+    #extract context from the diagram
+    # context = diagram.CreateDefaultContext()
+    #extract plant context from the full context
+    plant_context = plant.GetMyMutableContextFromRoot(context)
+    q0 = q0 = np.array(position_vector)
+    x0 = np.hstack((q0, 0*q0))
+    plant.SetPositions(plant_context, q0)
+    iiwa_controller.GetInputPort('desired_state').FixValue(iiwa_controller.GetMyMutableContextFromRoot(context), x0)
+    return context
+
+def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensor, context, camera_no, track_no, sim_count_pic):
     #step1: get arm from scene
     diagram_context = context #diagram.CreateDefaultContext()
     sensor_context = sensor.GetMyMutableContextFromRoot(diagram_context)
     sg_context = scene_graph.GetMyMutableContextFromRoot(diagram_context)
-    color = sensor.color_image_output_port().Eval(sensor_context).data   #rgb image
-    depth = sensor.depth_image_32F_output_port().Eval(sensor_context).data.squeeze(2)
+    # color = sensor.color_image_output_port().Eval(sensor_context).data   #rgb image
+    # depth = sensor.depth_image_32F_output_port().Eval(sensor_context).data.squeeze(2)
 
     #step2: change individual link positions
+    # iiwa_controller = iiwa_controller_fn(builder, plant, model)
+    position_vector = [1, 0.7, 1, 1.3, 1.5, 0.5, 0.3]   #these are angles in radians at each joint
+    context = iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector)
 
     #step3: get 3d points in that particular arm conf
     key_points_3d = get_3d_joints()
 
-    #step4: Take pic after orienting diff inks in arm
+    #step4: Take pic after orienting diff inks in arm 
+    # Note: latest context is required for takePic fn
     color, depth, arm_conf_name = takePic(scene_graph, sensor, context, camera_no, track_no, sim_count_pic)
     
     return key_points_3d, color, depth, arm_conf_name
@@ -397,24 +433,30 @@ def generate_dataset(args, sim_time_step):
     #transformations b/w every pair of cameras in multi camera system
     n_cameras = 10
     n_tracks = 4
-    diagram, visualizer, scene_graph, sensors, projection_matrices = create_scene(sim_time_step, n_cameras, n_tracks)
+    diagram, builder, plant, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices = create_scene(sim_time_step, n_cameras, n_tracks)
 
     print('total no of sensors: {}'.format(len(sensors)))
     simulator = initialize_simulation(diagram)
     for track_no in range(n_tracks):
         for camera_no in range(n_cameras):
+            n_times = 0
             n_arm_conf = 0  #conf of arm in current camera position
             while(True):    # we can orient diff joints of arm and take pic (TakePic is called inside orient_arms)
-                key_points_3d, color, depth, arm_conf_name = orient_arms(scene_graph, sensors[(track_no * n_cameras) + camera_no], diagram.CreateDefaultContext(), camera_no, track_no, sim_count_pic)
+                key_points_3d, color, depth, arm_conf_name = orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensors[(track_no * n_cameras) + camera_no], diagram.CreateDefaultContext(), camera_no, track_no, sim_count_pic)
                 images_sensors.append((color, depth))
                 n_arm_conf = n_arm_conf + 1
 
                 P = projection_matrices[(track_no * n_cameras) + camera_no]
                 #create json file based on the above information of 3d key points of joints and Projection matrix of current sensor
-                create_json(arm_conf_name, P, key_points_3d)
+                #create_json(arm_conf_name, P, key_points_3d)
 
-                if(keyboard.is_pressed('q')):
+                if(n_times == 5):
                     break
+
+                # if(keyboard.is_pressed('q')):
+                #     break
+
+                n_times = n_times + 1
 
     # model_file = 'clutter_maskrcnn_model.pt'
     # if not os.path.exists(model_file):
