@@ -204,7 +204,8 @@ def create_scene(sim_time_step=0.0001):
     #plant.WeldFrames(plant.world_frame(), model_frame)
     # Welding multi link robot on a particular pose
     plant.WeldFrames(
-        frame_on_parent_P=plant.world_frame(),
+        frame_on_parent_P=plant.world_frame(),    
+        # type of world frame: type :<class 'pydrake.multibody.tree.BodyFrame_[float]'
         frame_on_child_C=plant.GetFrameByName("iiwa_link_0", iiwa_1),
         X_PC=xyz_rpy_deg([0, 0, 0], [0, 0, 0]),
     )
@@ -212,7 +213,7 @@ def create_scene(sim_time_step=0.0001):
     # Add Camera and renderer
     renderer_name = "renderer"
     scene_graph.AddRenderer(renderer_name, MakeRenderEngineVtk(RenderEngineVtkParams()))
-    world_id = plant.GetBodyFrameIdOrThrow(plant.world_body().index())
+    world_id = plant.GetBodyFrameIdOrThrow(plant.world_body().index())    #type = <class 'pydrake.geometry.FrameId'>
 
     #
     #AddRgbdSensors(builder, plant, scene_graph)

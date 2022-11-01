@@ -12,6 +12,7 @@ from copy import deepcopy
 import cv2
 import keyboard
 import json
+from IPython.display import clear_output, display
 sys.path.append('/home/jayaram/robot_manipulation_drake/Ropoes_project_code/dream_code')
 #from dream_code.scripts.network_inference import network_inference
 
@@ -52,7 +53,8 @@ from pydrake.systems.sensors import (
     RgbdSensor,
 )
 
-from pydrake.all import InverseDynamicsController
+from pydrake.all import InverseDynamicsController, LeafSystem, AbstractValue
+from manipulation.scenarios import AddMultibodyTriad
 #from manipulation.scenarios import AddRgbdSensors
 
 # import torch
@@ -110,6 +112,23 @@ meshcat = StartMeshcat()
 #         Y = (v-cy) * Z/fy
 #         pC = np.c_[X,Y,Z]
 #         return pC
+
+class PrintPose(LeafSystem):
+    def __init__(self, body_index):
+        LeafSystem.__init__(self)
+        self._body_index = body_index
+        self.DeclareAbstractInputPort("body_poses", AbstractValue.Make([RigidTransform()]))
+        self.DeclareForcedPublishEvent(self.Publish)
+
+    def Publish(self, context):
+        pose = self.get_input_port().Eval(context)[self._body_index]
+        clear_output(wait=True)
+        print("gripper position (m): " + np.array2string(
+            pose.translation(), formatter={
+                'float': lambda x: "{:3.2f}".format(x)}))
+        print("gripper roll-pitch-yaw (rad):" + np.array2string(
+            RollPitchYaw(pose.rotation()).vector(),
+                         formatter={'float': lambda x: "{:3.2f}".format(x)}))
 
 # To inspect our own URDF files.
 def model_inspector(filename): # filename will be model's sdf or urdf file
@@ -201,7 +220,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
 
     # Load iiwa arm in simulator.
     model_sdf = FindResourceOrThrow("drake/manipulation/models/iiwa_description/iiwa7/iiwa7_with_box_collision.sdf")
-    model = parser.AddModelFromFile(model_sdf, model_name = "iiwa_1")
+    model = parser.AddModelFromFile(model_sdf, model_name = "iiwa_1")   #model_instance
 
     # Weld the arm to the world so that it's fixed during the simulation.
     #model_frame = plant.GetFrameByName("table_top_center")
@@ -292,15 +311,39 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
         builder, scene_graph, meshcat,
         MeshcatVisualizerParams(role=Role.kPerception, prefix="visual"))
     
+    #initialize controller for joints of model after plant is finalized with models
     iiwa_controller = iiwa_controller_fn(builder, plant, model)
 
+    # Draw the frames
+    # for body_name in ["iiwa_link_1", "iiwa_link_2", "iiwa_link_3", "iiwa_link_4", "iiwa_link_5", "iiwa_link_6", "iiwa_link_7"]:
+    #     AddMultibodyTriad(plant.GetFrameByName(body_name), scene_graph)
+
+    # gripper = plant.GetBodyByName("iiwa_link_3", model)
+    #type of gripper: <class 'pydrake.multibody.tree.RigidBody_[float]'>
+
+    # type:<class 'pydrake.multibody.tree.BodyFrame_[float]'  --> same instance type as plant.world_frame()
+    # <BodyFrame_[float] name='iiwa_link_3' index=4 model_instance=2>
+    # link_0_pose = iiwa_link_0_frame.CalcPoseInBodyFrame()
+
+    # link_3_pose = iiwa_link_3_frame.GetFixedPoseInBodyFrame()
+    # print('link_3_pose:{}'.format(link_3_pose))
+
+    # print('gripper pose : {}'.format(gripper.get_pose_in_world()))
+    # gripper_context = gripper.DoAllocateContext()
+    # print(gripper)
+    # gripper_context  = gripper.index()   #gripper.index() is LeafSystem
+    # print_pose = builder.AddSystem(PrintPose(gripper.index()))
+    # builder.Connect(plant.get_body_poses_output_port(),
+    #                 print_pose.get_input_port())
+
+    # PrintPose(gripper.index()).Publish(gripper_context)
     diagram = builder.Build()
 
     # sensors = []
     # sensors.append(CameraSystem(0, meshcat, diagram, context))
     # sensors.append(CameraSystem(1, meshcat, diagram, context))
 
-    return diagram, builder, plant, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices
+    return diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices
 
 
 def initialize_simulation(diagram):
@@ -342,8 +385,13 @@ def triangulation_DLT(P1, P2, kp1, kp2):
     #print(Vh[3,0:3]/Vh[3,3])
     return Vh[3,0:3]/Vh[3,3]
 
-def get_3d_joints():
-    pass
+def get_3d_joints(plant_context, joint_frames):
+    #compute relative T b.w each of joint of iiwa links wrt first joint of iiwa_link_0 as we welded first joint of iiwa_link_0 to world frame in plant
+    joint_poses_wrt_joint0 = []
+    for i in range(8):
+        joint_poses_wrt_joint0.append((joint_frames[i].CalcPoseInWorld(plant_context)).translation())
+    joint_poses_wrt_joint0 = np.array(joint_poses_wrt_joint0)
+    return joint_poses_wrt_joint0
 
 def iiwa_controller_fn(builder, plant, model):
     Kp = np.full(7, 100)
@@ -361,7 +409,7 @@ def iiwa_controller_fn(builder, plant, model):
 
     return iiwa_controller
 
-def iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector):    
+def iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector, model):    
     #extract context from the diagram
     # context = diagram.CreateDefaultContext()
     #extract plant context from the full context
@@ -369,10 +417,23 @@ def iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector)
     q0 = q0 = np.array(position_vector)
     x0 = np.hstack((q0, 0*q0))
     plant.SetPositions(plant_context, q0)
-    iiwa_controller.GetInputPort('desired_state').FixValue(iiwa_controller.GetMyMutableContextFromRoot(context), x0)
-    return context
 
-def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensor, context, camera_no, track_no, sim_count_pic):
+    #get joints/links info
+    thetas = plant.GetPositions(plant_context)   #these will give angles
+    print('thetas between links :{}'.format(thetas))    #this will print theta between diff links
+
+    joint_pos = 1
+    joint_indices = plant.GetJointIndices(model)
+    joint = plant.get_joint(joint_indices[joint_pos])
+    f = joint.frame_on_parent()
+    print('T matrix:{}'.format(f.GetFixedPoseInBodyFrame()))
+    # print('joint positon :{}'.format(joint.GetOnePosition(plant_context)))  #this will give just single theta
+    print('joint at pos {}:{}'.format(joint_pos, joint))
+
+    iiwa_controller.GetInputPort('desired_state').FixValue(iiwa_controller.GetMyMutableContextFromRoot(context), x0)
+    return context, plant_context
+
+def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensor, context, plant_context, camera_no, track_no, sim_count_pic):
     #step1: get arm from scene
     diagram_context = context #diagram.CreateDefaultContext()
     sensor_context = sensor.GetMyMutableContextFromRoot(diagram_context)
@@ -382,11 +443,16 @@ def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controlle
 
     #step2: change individual link positions
     # iiwa_controller = iiwa_controller_fn(builder, plant, model)
-    position_vector = [1, 0.7, 1, 1.3, 1.5, 0.5, 0.3]   #these are angles in radians at each joint
-    context = iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector)
+    # position_vector = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    position_vector = [1, 0.7, 1, 1.3, 1.5, 0.65, 0.6]   #these are angles in radians at each joint
+    context, plant_context = iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector, model)
 
     #step3: get 3d points in that particular arm conf
-    key_points_3d = get_3d_joints()
+    joint_frames = []  #these are frames at each of joint of model in plant
+    for i in range(8):
+        joint_frames.append(plant.GetFrameByName("iiwa_link_" + str(i) , model))
+    key_points_3d = get_3d_joints(plant_context, joint_frames)
+    print('3d keypoints: \n {}'.format(key_points_3d))   #there are 8 joints in kuka arm
 
     #step4: Take pic after orienting diff inks in arm 
     # Note: latest context is required for takePic fn
@@ -394,20 +460,20 @@ def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controlle
     
     return key_points_3d, color, depth, arm_conf_name
 
-def create_json(arm_conf_name, P, key_points_3d):  #n*3
-    n_points = len(key_points_3d)
-    kp_homogneous_3d = np.c_(key_points_3d, np.ones(n_points))  #n*4
+def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
+    n_points = key_points_3d.shape[0]
+    kp_homogneous_3d = np.c_[key_points_3d, np.ones(n_points).reshape(-1, 1)]  #n*4
     kp_homogenous_2d = np.dot(P, kp_homogneous_3d.T)  #3*n
     kp_homogenous_2d = kp_homogenous_2d.T  #n*3
-    kp_homogenous_2d = kp_homogenous_2d / kp_homogenous_2d[: ,2]
+    kp_homogenous_2d = kp_homogenous_2d / kp_homogenous_2d[: ,2].reshape(-1, 1)
     key_points_2d = kp_homogenous_2d[:, :2]  #n*2
 
     kps_list = []
     joint_names = ["iiwa7_link_0", "iiwa7_link_1", "iiwa7_link_2", "iiwa7_link_3", "iiwa7_link_4", "iiwa7_link_5", "iiwa7_link_6", "iiwa7_link_7"]
     for i,joint_name in enumerate(joint_names):
         kps_list.append({"name": joint_name,
-					    "location": key_points_3d[i, :],
-					    "projected_location": key_points_2d[i, :]})
+					    "location": key_points_3d[i, :].tolist(),
+					    "projected_location": key_points_2d[i, :].tolist()})
 
     #create json file in w mode and insert data 
     with open(arm_conf_name + '.json', 'w') as f:
@@ -423,7 +489,7 @@ def create_json(arm_conf_name, P, key_points_3d):  #n*3
                             }
                         ]
                    }
-        json.dumps(data_dict, f)
+        json.dump(data_dict, f, indent = 5)
 
 # Capture 
 def generate_dataset(args, sim_time_step):
@@ -431,9 +497,9 @@ def generate_dataset(args, sim_time_step):
     #initalize count of pics taken in simulation
     sim_count_pic = 1
     #transformations b/w every pair of cameras in multi camera system
-    n_cameras = 10
-    n_tracks = 4
-    diagram, builder, plant, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices = create_scene(sim_time_step, n_cameras, n_tracks)
+    n_cameras = 7
+    n_tracks = 2
+    diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices = create_scene(sim_time_step, n_cameras, n_tracks)
 
     print('total no of sensors: {}'.format(len(sensors)))
     simulator = initialize_simulation(diagram)
@@ -442,15 +508,15 @@ def generate_dataset(args, sim_time_step):
             n_times = 0
             n_arm_conf = 0  #conf of arm in current camera position
             while(True):    # we can orient diff joints of arm and take pic (TakePic is called inside orient_arms)
-                key_points_3d, color, depth, arm_conf_name = orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensors[(track_no * n_cameras) + camera_no], diagram.CreateDefaultContext(), camera_no, track_no, sim_count_pic)
+                key_points_3d, color, depth, arm_conf_name = orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensors[(track_no * n_cameras) + camera_no], diagram.CreateDefaultContext(), plant_context, camera_no, track_no, sim_count_pic)
                 images_sensors.append((color, depth))
                 n_arm_conf = n_arm_conf + 1
 
                 P = projection_matrices[(track_no * n_cameras) + camera_no]
                 #create json file based on the above information of 3d key points of joints and Projection matrix of current sensor
-                #create_json(arm_conf_name, P, key_points_3d)
+                create_json(arm_conf_name, P, key_points_3d)
 
-                if(n_times == 5):
+                if(n_times == 1):
                     break
 
                 # if(keyboard.is_pressed('q')):
