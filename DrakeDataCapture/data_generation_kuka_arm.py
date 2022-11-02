@@ -208,7 +208,7 @@ def determine_transformation_matrices(R, t):
     return transformations
 
 # Returns a diagram which is consumed by simulator.
-def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
+def create_scene(sim_time_step=0.0001, n_cameras = 1, rad = 1):
     # Clean up MeshCat.
     meshcat.Delete()
     meshcat.DeleteAddedControls()
@@ -247,57 +247,56 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
     centerX = 0
     centerY = 0
     theta = np.linspace(0, 360, num=n_cameras)
-    rad = np.linspace(2, 4, num = n_tracks)
-    for r in rad:
-        for t in theta:
-            x = centerX + r * np.cos(t)
-            y = centerY + r * np.sin(t)
 
-            #camera intrinsics
-            intrinsics = CameraInfo(  
-                width=640,
-                height=480,
-                fov_y=np.pi/4,
-            )
-            # print(intrinsics_2)
-            core = RenderCameraCore(
-                renderer_name,
-                intrinsics,
-                ClippingRange(0.01, 10.0),
-                RigidTransform(),
-            )
+    for t in theta:
+        x = centerX + r * np.cos(t)
+        y = centerY + r * np.sin(t)
 
-            color_camera = ColorRenderCamera(core, show_window=False)
-            depth_camera = DepthRenderCamera(core, DepthRange(0.01, 10.0))
+        #camera intrinsics
+        intrinsics = CameraInfo(  
+            width=640,
+            height=480,
+            fov_y=np.pi/4,
+        )
+        # print(intrinsics_2)
+        core = RenderCameraCore(
+            renderer_name,
+            intrinsics,
+            ClippingRange(0.01, 10.0),
+            RigidTransform(),
+        )
 
-            #fix the camera_2 position in world frame
-            #X_WB = xyz_rpy_deg([2, 0, 0.75], [-90, 0, 90])   #for first camera
-            # X_WB = xyz_rpy_deg([x, y, 0.75], [-90, 0, 90]) 
-            delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])   
-            X_WB = xyz_rpy_deg([r, 0, 0.75], [-90, 0, 90])
-            X_WB = delta_wrt_world_z  @  X_WB  
+        color_camera = ColorRenderCamera(core, show_window=False)
+        depth_camera = DepthRenderCamera(core, DepthRange(0.01, 10.0))
 
-            #determine P for this camera position
-            R = np.array(X_WB.rotation().matrix())
-            t = X_WB.translation()
-            intrinsic_matrix = intrinsics.intrinsic_matrix()
-            P = intrinsic_matrix @ np.hstack((R.T, -R.T @ t.reshape(-1, 1)))
-            projection_matrices.append(P)
+        #fix the camera_2 position in world frame
+        #X_WB = xyz_rpy_deg([2, 0, 0.75], [-90, 0, 90])   #for first camera
+        # X_WB = xyz_rpy_deg([x, y, 0.75], [-90, 0, 90]) 
+        delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])   
+        X_WB = xyz_rpy_deg([rad, 0, 0.75], [-90, 0, 90])
+        X_WB = delta_wrt_world_z  @  X_WB  
 
-            # print('rotation matrix: {}'.format(type(np.array(X_WB_2.rotation().matrix()))))
-            #roll, pitch, yaw along X, Y Z directions (fixed angle representation)
-            sensor = RgbdSensor(
-                world_id,
-                X_PB=X_WB,
-                color_camera=color_camera,
-                depth_camera=depth_camera,
-            )
-            builder.AddSystem(sensor)
-            builder.Connect(
-                scene_graph.get_query_output_port(),
-                sensor.query_object_input_port(),
-            )
-            sensors.append(sensor)
+        #determine P for this camera position
+        R = np.array(X_WB.rotation().matrix())
+        t = X_WB.translation()
+        intrinsic_matrix = intrinsics.intrinsic_matrix()
+        P = intrinsic_matrix @ np.hstack((R.T, -R.T @ t.reshape(-1, 1)))
+        projection_matrices.append(P)
+
+        # print('rotation matrix: {}'.format(type(np.array(X_WB_2.rotation().matrix()))))
+        #roll, pitch, yaw along X, Y Z directions (fixed angle representation)
+        sensor = RgbdSensor(
+            world_id,
+            X_PB=X_WB,
+            color_camera=color_camera,
+            depth_camera=depth_camera,
+        )
+        builder.AddSystem(sensor)
+        builder.Connect(
+            scene_graph.get_query_output_port(),
+            sensor.query_object_input_port(),
+        )
+        sensors.append(sensor)
 
 
     # Finalize the plant after loading the scene.
@@ -307,9 +306,10 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
     plant_context = plant.CreateDefaultContext()
 
     # Add visualizer to visualize the geometries.
-    visualizer = MeshcatVisualizer.AddToBuilder(
-        builder, scene_graph, meshcat,
-        MeshcatVisualizerParams(role=Role.kPerception, prefix="visual"))
+    visualizer = None
+    # visualizer = MeshcatVisualizer.AddToBuilder(
+    #     builder, scene_graph, meshcat,
+    #     MeshcatVisualizerParams(role=Role.kPerception, prefix="visual"))
     
     #initialize controller for joints of model after plant is finalized with models
     iiwa_controller = iiwa_controller_fn(builder, plant, model)
@@ -426,9 +426,9 @@ def iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector,
     joint_indices = plant.GetJointIndices(model)
     joint = plant.get_joint(joint_indices[joint_pos])
     f = joint.frame_on_parent()
-    print('T matrix:{}'.format(f.GetFixedPoseInBodyFrame()))
+    # print('T matrix:{}'.format(f.GetFixedPoseInBodyFrame()))
     # print('joint positon :{}'.format(joint.GetOnePosition(plant_context)))  #this will give just single theta
-    print('joint at pos {}:{}'.format(joint_pos, joint))
+    # print('joint at pos {}:{}'.format(joint_pos, joint))
 
     iiwa_controller.GetInputPort('desired_state').FixValue(iiwa_controller.GetMyMutableContextFromRoot(context), x0)
     return context, plant_context
@@ -452,7 +452,7 @@ def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controlle
     for i in range(8):
         joint_frames.append(plant.GetFrameByName("iiwa_link_" + str(i) , model))
     key_points_3d = get_3d_joints(plant_context, joint_frames)
-    print('3d keypoints: \n {}'.format(key_points_3d))   #there are 8 joints in kuka arm
+    # print('3d keypoints: \n {}'.format(key_points_3d))   #there are 8 joints in kuka arm
 
     #step4: Take pic after orienting diff inks in arm 
     # Note: latest context is required for takePic fn
@@ -463,7 +463,7 @@ def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controlle
 def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
     n_points = key_points_3d.shape[0]
     kp_homogneous_3d = np.c_[key_points_3d, np.ones(n_points).reshape(-1, 1)]  #n*4
-    print('Projection matrix: {}'.format(P))
+    # print('Projection matrix: {}'.format(P))
     kp_homogenous_2d = np.dot(P, kp_homogneous_3d.T)  #3*n
     kp_homogenous_2d = kp_homogenous_2d.T  #n*3
     kp_homogenous_2d = kp_homogenous_2d / (kp_homogenous_2d[: ,2].reshape(-1, 1))
@@ -508,23 +508,24 @@ def generate_dataset(args, sim_time_step):
     #initalize count of pics taken in simulation
     sim_count_pic = 1
     #transformations b/w every pair of cameras in multi camera system
-    n_cameras = 30
-    n_tracks = 20
-    diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices = create_scene(sim_time_step, n_cameras, n_tracks)
+    n_cameras = 15
+    n_tracks = 30
+    rad = np.linspace(2, 4, num = n_tracks)
+    for track_no, r in enumerate(rad):
+        print('track no :{}'.format(track_no + 1))
+        diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices = create_scene(sim_time_step, n_cameras, r)
+        simulator = initialize_simulation(diagram)
 
-    print('total no of sensors: {}'.format(len(sensors)))
-    simulator = initialize_simulation(diagram)
-    for track_no in range(n_tracks):
         for camera_no in range(n_cameras):
             n_times = 0
             n_arm_conf = 0  #conf of arm in current camera position
             # while(True):    # we can orient diff joints of arm and take pic (TakePic is called inside orient_arms)
             for i in range(1):
-                key_points_3d, color, depth, arm_conf_name = orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensors[(track_no * n_cameras) + camera_no], diagram.CreateDefaultContext(), plant_context, camera_no, track_no, sim_count_pic)
+                key_points_3d, color, depth, arm_conf_name = orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensors[camera_no], diagram.CreateDefaultContext(), plant_context, camera_no, track_no, sim_count_pic)
                 images_sensors.append((color, depth))
                 n_arm_conf = n_arm_conf + 1
 
-                P = projection_matrices[(track_no * n_cameras) + camera_no]
+                P = projection_matrices[camera_no]
                 #create json file based on the above information of 3d key points of joints and Projection matrix of current sensor
                 create_json(arm_conf_name, P, key_points_3d)
 
@@ -549,7 +550,7 @@ def generate_dataset(args, sim_time_step):
 
     # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     # model.to(device)
-    visualizer.StartRecording()
+    # visualizer.StartRecording()
     # simulator.AdvanceTo(0.250)
     # context = simulator.get_context()
 
@@ -559,7 +560,7 @@ def generate_dataset(args, sim_time_step):
     # context = simulator.get_context()
     # color3, depth3 = takePic(scene_graph, sensors[i], context)
 
-    visualizer.PublishRecording()
+    # visualizer.PublishRecording()
 
     return images_sensors
 
