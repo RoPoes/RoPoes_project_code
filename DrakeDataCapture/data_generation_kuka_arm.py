@@ -280,6 +280,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, rad = 1):
         R = np.array(X_WB.rotation().matrix())
         t = X_WB.translation()
         intrinsic_matrix = intrinsics.intrinsic_matrix()
+        print('intrinsic matrix: {}'.format(intrinsic_matrix))
         P = intrinsic_matrix @ np.hstack((R.T, -R.T @ t.reshape(-1, 1)))
         projection_matrices.append(P)
 
@@ -509,17 +510,23 @@ def generate_dataset(args, sim_time_step):
     sim_count_pic = 1
     #transformations b/w every pair of cameras in multi camera system
     n_cameras = 15
-    n_tracks = 30
-    rad = np.linspace(2, 4, num = n_tracks)
-    for track_no, r in enumerate(rad):
-        print('track no :{}'.format(track_no + 1))
+    n_tracks = 3
+    rad = np.linspace(3.86206897, 4.0, num = n_tracks)
+    # [2.         2.06896552 2.13793103 2.20689655 2.27586207 2.34482759
+    # 2.4137931  2.48275862 2.55172414 2.62068966 2.68965517 2.75862069
+    # 2.82758621 2.89655172 2.96551724 3.03448276 3.10344828 3.17241379
+    # 3.24137931 3.31034483 3.37931034 3.44827586 3.51724138 3.5862069
+    # 3.65517241 3.72413793 3.79310345 3.86206897 3.93103448 4.        ]
+    track_no = 27
+    for r in rad:
+        track_no = track_no + 1
+        print('track no :{}'.format(track_no))
         diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices = create_scene(sim_time_step, n_cameras, r)
-        simulator = initialize_simulation(diagram)
+        # simulator = initialize_simulation(diagram)
 
         for camera_no in range(n_cameras):
             n_times = 0
             n_arm_conf = 0  #conf of arm in current camera position
-            # while(True):    # we can orient diff joints of arm and take pic (TakePic is called inside orient_arms)
             for i in range(1):
                 key_points_3d, color, depth, arm_conf_name = orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensors[camera_no], diagram.CreateDefaultContext(), plant_context, camera_no, track_no, sim_count_pic)
                 images_sensors.append((color, depth))

@@ -427,6 +427,7 @@ def train_network(args):
     network_requires_belief_maps = (
         dream_network.network_config["architecture"]["target"] == "belief_maps"
     )
+    print('found_data: {}'.format(found_data))
     found_dataset = dream.datasets.ManipulatorNDDSDataset(
         found_data,   #this was created in found_data = dream.utilities.find_ndds_data_in_dir(input_data_path)
         manipulator_config["name"],
@@ -443,6 +444,7 @@ def train_network(args):
 
     # Split into train and validation subsets
     n_data = len(found_dataset)
+    print('n_data len :{}'.format(n_data))
     n_train_data = int(round(n_data * args.training_data_fraction))
     n_valid_data = n_data - n_train_data
     train_dataset, valid_dataset = torch.utils.data.random_split(

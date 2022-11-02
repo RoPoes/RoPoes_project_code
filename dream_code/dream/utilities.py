@@ -120,14 +120,16 @@ def find_ndds_data_in_dir(
 
     # Sort candidate data files by name
     data_filenames.sort()
-
-    data_names = [os.path.splitext(f)[0] for f in data_filenames if f[0].isdigit()]
+    # print('data filenames: {}'.format(data_filenames))
+    # data_names = [os.path.splitext(f)[0] for f in data_filenames if f[0].isdigit()]
+    data_names = [os.path.splitext(f)[0] for f in data_filenames if f[0] == 'r']
 
     # If there are no matching json files -- this is not an NDDS dataset -- return None
     if not data_names:
         return None, None
 
-    data_paths = [os.path.join(input_dir, f) for f in data_filenames if f[0].isdigit()]
+    # data_paths = [os.path.join(input_dir, f) for f in data_filenames if f[0].isdigit()]
+    data_paths = [os.path.join(input_dir, f) for f in data_filenames if f[0] == 'r']
 
     if requested_image_types == "all":
         # Detect based on first entry
@@ -175,9 +177,11 @@ def find_ndds_data_in_dir(
     dict_of_lists_images = {}
     n_samples = len(data_names)
 
+    find_rgb = True   #remove this later
     if find_rgb:
         rgb_paths = [
-            os.path.join(input_dir, f + ".rgb" + image_full_ext) for f in data_names
+            os.path.join(input_dir, f  + image_full_ext) for f in data_names
+            # os.path.join(input_dir, f + ".rgb" + image_full_ext) for f in data_names
         ]
         for n in range(n_samples):
             assert os.path.exists(
@@ -219,7 +223,9 @@ def find_ndds_data_in_dir(
 
     # Process config files, which are data files that don't have an associated image
     found_configs = {"camera": None, "object": None, "unsorted": []}
-    data_filenames_without_images = [f for f in data_filenames if not f[0].isdigit()]
+    # data_filenames_without_images = [f for f in data_filenames if not f[0].isdigit()]
+    data_filenames_without_images = [f for f in data_filenames if f[0] != 'r']
+    # print('data_filenames_without_images:{}'.format(data_filenames_without_images))
 
     for data_filename in data_filenames_without_images:
         if data_filename == "_camera_settings" + data_full_ext:
