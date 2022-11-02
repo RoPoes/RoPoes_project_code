@@ -1,0 +1,19 @@
+Q: How to get pose of one of the joint of a particular link in iiwa arm in drake simulator?
+
+
+I am trying to get pose of one of joint of a particular link in iiwa arm using drake simulator. For example, lets consider "iiwa_link_3" of iiwa arm loaded in drake simulator and I want to get position/orientation of one of the joint of this link. 
+
+
+I am trying to get it using below snippet. When I run this, I get below error. Is this correct method to get pose of joint, if not, How to solve this?
+
+       AttributeError: 'RigidBody_[float]' object has no attribute 'get_pose_in_world'
+
+Snippet used in my code: 
+
+```
+    gripper = plant.GetBodyByName("iiwa_link_3", model)
+    #type of gripper: <class 'pydrake.multibody.tree.RigidBody_[float]'>
+    print('gripper pose : {}'.format(gripper.get_pose_in_world()))
+```
+
+
