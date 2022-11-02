@@ -243,11 +243,11 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
     projection_matrices = []
 
     #generate points in a circle around the arm for a particular radius
-    r = 2
+    r = 0.25    #not required
     centerX = 0
     centerY = 0
     theta = np.linspace(0, 360, num=n_cameras)
-    rad = np.linspace(2, 6, num = n_tracks)
+    rad = np.linspace(2, 4, num = n_tracks)
     for r in rad:
         for t in theta:
             x = centerX + r * np.cos(t)
@@ -443,8 +443,8 @@ def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controlle
 
     #step2: change individual link positions
     # iiwa_controller = iiwa_controller_fn(builder, plant, model)
-    # position_vector = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    position_vector = [1, 0.7, 1, 1.3, 1.5, 0.65, 0.6]   #these are angles in radians at each joint
+    position_vector = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    # position_vector = [1, 0.7, 1, 1.3, 1.5, 0.65, 0.6]   #these are angles in radians at each joint
     context, plant_context = iiwa_position_set(context, plant, diagram, iiwa_controller, position_vector, model)
 
     #step3: get 3d points in that particular arm conf
@@ -470,7 +470,7 @@ def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
     key_points_2d = kp_homogenous_2d[:, :2]  #n*2
 
     #overlay 2d kps on image (use below snippet just for testing)
-    
+
     # current_img = cv2.imread(arm_conf_name + '.jpg')
     # print('img_shape:{}'.format(current_img.shape))
     # for kp_2d in key_points_2d:
@@ -508,8 +508,8 @@ def generate_dataset(args, sim_time_step):
     #initalize count of pics taken in simulation
     sim_count_pic = 1
     #transformations b/w every pair of cameras in multi camera system
-    n_cameras = 7
-    n_tracks = 2
+    n_cameras = 30
+    n_tracks = 20
     diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, sensors, model, projection_matrices = create_scene(sim_time_step, n_cameras, n_tracks)
 
     print('total no of sensors: {}'.format(len(sensors)))
@@ -518,7 +518,8 @@ def generate_dataset(args, sim_time_step):
         for camera_no in range(n_cameras):
             n_times = 0
             n_arm_conf = 0  #conf of arm in current camera position
-            while(True):    # we can orient diff joints of arm and take pic (TakePic is called inside orient_arms)
+            # while(True):    # we can orient diff joints of arm and take pic (TakePic is called inside orient_arms)
+            for i in range(1):
                 key_points_3d, color, depth, arm_conf_name = orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controller, model, sensors[(track_no * n_cameras) + camera_no], diagram.CreateDefaultContext(), plant_context, camera_no, track_no, sim_count_pic)
                 images_sensors.append((color, depth))
                 n_arm_conf = n_arm_conf + 1
@@ -527,13 +528,13 @@ def generate_dataset(args, sim_time_step):
                 #create json file based on the above information of 3d key points of joints and Projection matrix of current sensor
                 create_json(arm_conf_name, P, key_points_3d)
 
-                if(n_times == 1):
-                    break
+            # if(n_times == 1):
+            #     break
 
-                # if(keyboard.is_pressed('q')):
-                #     break
+            # # if(keyboard.is_pressed('q')):
+            # #     break
 
-                n_times = n_times + 1
+            # n_times = n_times + 1
 
     # model_file = 'clutter_maskrcnn_model.pt'
     # if not os.path.exists(model_file):
