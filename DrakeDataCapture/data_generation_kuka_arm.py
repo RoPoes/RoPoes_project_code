@@ -281,7 +281,7 @@ def create_scene(sim_time_step=0.0001, n_cameras = 1, n_tracks = 1):
             R = np.array(X_WB.rotation().matrix())
             t = X_WB.translation()
             intrinsic_matrix = intrinsics.intrinsic_matrix()
-            P = intrinsic_matrix @ np.vstack((np.hstack((R, t.reshape(-1, 1)))))
+            P = intrinsic_matrix @ np.hstack((R.T, -R.T @ t.reshape(-1, 1)))
             projection_matrices.append(P)
 
             # print('rotation matrix: {}'.format(type(np.array(X_WB_2.rotation().matrix()))))
@@ -463,10 +463,21 @@ def orient_arms(diagram, builder, plant, visualizer, scene_graph, iiwa_controlle
 def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
     n_points = key_points_3d.shape[0]
     kp_homogneous_3d = np.c_[key_points_3d, np.ones(n_points).reshape(-1, 1)]  #n*4
+    print('Projection matrix: {}'.format(P))
     kp_homogenous_2d = np.dot(P, kp_homogneous_3d.T)  #3*n
     kp_homogenous_2d = kp_homogenous_2d.T  #n*3
-    kp_homogenous_2d = kp_homogenous_2d / kp_homogenous_2d[: ,2].reshape(-1, 1)
+    kp_homogenous_2d = kp_homogenous_2d / (kp_homogenous_2d[: ,2].reshape(-1, 1))
     key_points_2d = kp_homogenous_2d[:, :2]  #n*2
+
+    #overlay 2d kps on image (use below snippet just for testing)
+    
+    # current_img = cv2.imread(arm_conf_name + '.jpg')
+    # print('img_shape:{}'.format(current_img.shape))
+    # for kp_2d in key_points_2d:
+    #     print('kp_2d: {}'.format(kp_2d))
+    #     current_img = cv2.circle(current_img, (int(np.float32(kp_2d[0])), int(np.float32(kp_2d[1]))), radius=3, color=(0 ,0 ,255), thickness=-1)
+    # # save with 2d points on image
+    # cv2.imwrite(arm_conf_name + ".jpg", current_img)
 
     kps_list = []
     joint_names = ["iiwa7_link_0", "iiwa7_link_1", "iiwa7_link_2", "iiwa7_link_3", "iiwa7_link_4", "iiwa7_link_5", "iiwa7_link_6", "iiwa7_link_7"]
