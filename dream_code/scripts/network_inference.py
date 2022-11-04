@@ -193,8 +193,8 @@ def network_inference(args):
         title="Keypoints (possibly with ground truth) on net input image"
     )
 
-
-    cv2.imwrite("../camera_" + str(args.camera_number) + "_" + "img_" + str(args.simulator_pic_count) + ".jpg", cv2.cvtColor(np.array(keypoints_wrtNetInput_overlay).copy(), cv2.COLOR_RGBA2BGRA))
+    # remove below comment when running joints_extraction_3d.py
+    # cv2.imwrite("../camera_" + str(args.camera_number) + "_" + "img_" + str(args.simulator_pic_count) + ".jpg", cv2.cvtColor(np.array(keypoints_wrtNetInput_overlay).copy(), cv2.COLOR_RGBA2BGRA))
 
     # Generate visualization output:  mosaic of raw belief maps from network
     belief_maps_overlay = generate_belief_map_visualizations(
@@ -341,3 +341,9 @@ if __name__ == "__main__":
 
     # Run network inference
     network_inference(args)
+
+#python dream_code/scripts/network_inference.py -i /home/jayaram/robot_manipulation_drake/trained_models/kuka_retrained_on_straight_conf.pth -c /home/jayaram/robot_manipulation_drake/trained_models/kuka_retrained_on_straight_conf.yaml -m /home/jayaram/robot_manipulation_drake/Ropoes_project_code/training/data/hard_images_testing/oriented_r_0_c_3_img_1.jpg
+
+#python dream_code/scripts/network_inference.py -i /home/jayaram/robot_manipulation_drake/trained_models/kuka_dream_resnet_h.pth -c /home/jayaram/robot_manipulation_drake/trained_models/kuka_dream_resnet_h.yaml -m /home/jayaram/robot_manipulation_drake/Ropoes_project_code/training/data/r_1_c_2_img_1.jpg
+
+#debug why base is not deducted for this image? python dream_code/scripts/network_inference.py -i /home/jayaram/robot_manipulation_drake/trained_models/kuka_retrained_on_straight_conf.pth -c /home/jayaram/robot_manipulation_drake/trained_models/kuka_retrained_on_straight_conf.yaml -m /home/jayaram/robot_manipulation_drake/Ropoes_project_code/training/data/r_1_c_2_img_1.jpg

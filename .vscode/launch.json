@@ -5,8 +5,22 @@
     // python scripts/network_inference_dataset.py -i <path/to/network.pth> -d <path/to/dataset_dir/> -o <path/to/output_dir/> -b 16 -w 8
     "version": "0.2.0",
     "configurations": [
-        
 
+        {
+            "name": "dream_code/scripts/network_inference.py",
+            "type": "python",
+            "request": "launch",
+            "program": "dream_code/scripts/network_inference.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-i", 
+                "/home/jayaram/robot_manipulation_drake/trained_models/kuka_retrained_on_straight_conf.pth",
+                "-c",
+                "/home/jayaram/robot_manipulation_drake/trained_models/kuka_retrained_on_straight_conf.yaml",
+                "-m",
+                "/home/jayaram/robot_manipulation_drake/Ropoes_project_code/training/data/hard_images_testing/oriented_r_0_c_3_img_1.jpg"
+            ]
+        },
         {
             "name": "/home/jayaram/mount_ada_node/dream_paper/DREAM/scripts/network_inference_dataset.py",
             "type": "python",
@@ -48,13 +62,13 @@
                 "2",
                 "-lr",
                 "0.00015",
-                "-b",   //batch size
+                "-b", //batch size
                 "7",
-                "-w",   //n_workers
+                "-w", //n_workers
                 "3",
                 "-rt",
                 "True",
-                "-o",   
+                "-o",
                 "training/results/"
             ]
         }

@@ -945,7 +945,7 @@ def peaks_from_belief_maps(belief_map_tensor, offset_due_to_upsampling):
         map_down = np.zeros(map.shape)
         map_down[:, :-p] = map[:, p:]
 
-        #keep only those pixels which are >= 4 neighbour intensities
+        #keep only those pixels which are >= 4 neighbour intensities and checks if it is >threshold
         peaks_binary = np.logical_and.reduce(
             (
                 map >= map_left,

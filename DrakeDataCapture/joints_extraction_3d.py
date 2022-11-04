@@ -280,7 +280,7 @@ def create_scene(sim_time_step=0.0001):
 
     #fix the camera_2 position in world frame
     #X_WB = xyz_rpy_deg([2, 0, 0.75], [-90, 0, 90])   #for first camera
-    X_WB_2 = xyz_rpy_deg([1.1, 0.5, 0.75], [-90, 0, 90])   
+    X_WB_2 = xyz_rpy_deg([1.9, 0.1, 0.75], [-90, 0, 90])   
     R.append(np.array(X_WB_2.rotation().matrix()))
     t.append(X_WB_2.translation())
 
@@ -393,6 +393,8 @@ def run_simulation(args, sim_time_step):
     simulator = initialize_simulation(diagram)
     color1, depth1 = takePic(scene_graph, sensors[0], diagram.CreateDefaultContext(), 1, sim_count_pic)
     color2, depth2 = takePic(scene_graph, sensors[1], diagram.CreateDefaultContext(), 2, sim_count_pic)
+
+    #give custom image
 
     #apply dream model on the above images
     print(
@@ -533,5 +535,5 @@ if __name__ == "__main__":
     image_sensors = []   #this is list of image_sets taken from diff sensors. 
     image_sensors = run_simulation(args, sim_time_step=0.0001)  
 
-#python Ropoes_project_code/DrakeDataCapture/joints_extraction_3d.py -i /home/jayaram/robot_manipulation_drake/trained_models/kuka_dream_resnet_h.pth
+#python Ropoes_project_code/DrakeDataCapture/joints_extraction_3d.py -i /home/jayaram/robot_manipulation_drake/trained_models/kuka_retrained_on_straight_conf.pth
 

@@ -188,7 +188,7 @@ class DreamNetwork:
         # Use belief map scores to try to determine cases in multiple instances
         self.use_belief_peak_scores = True
         # This in the scale of the belief map, which is 0 - 1.0.
-        self.belief_peak_next_best_score = 0.25
+        self.belief_peak_next_best_score = 0.025
 
         # Create architectures
         if self.architecture_type == "vgg":
@@ -574,8 +574,8 @@ class DreamNetwork:
                                 # Keep the best score
                                 detected_kp_projs.append(
                                     [
-                                        peak_sorted_by_score[0][0],
-                                        peak_sorted_by_score[0][1],
+                                        peak_sorted_by_score[0][0],   #x pixel cooridinate
+                                        peak_sorted_by_score[0][1],   #y pixel coordinate
                                     ] 
                                 )
                                 # detected_kp_projs.append(
