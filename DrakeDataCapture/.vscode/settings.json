@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "/home/marsar/DRAKE/ropoes/bin/python3"
+    "python.pythonPath": "/home/marsar/DRAKE/ropoes/bin/python3",
+    "ros.distro": "noetic"
 }

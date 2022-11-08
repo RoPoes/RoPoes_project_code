@@ -8,6 +8,7 @@ import time
 import argparse
 import sys
 import itertools
+from tqdm import tqdm
 from copy import deepcopy
 import cv2
 import keyboard
@@ -208,7 +209,7 @@ def determine_transformation_matrices(R, t):
     return transformations
 
 # Returns a diagram which is consumed by simulator.
-def create_scene(sim_time_step=0.0001):
+def create_scene(sim_time_step=0.0001, scene_setup_details=None):
     # Clean up MeshCat.
     meshcat.Delete()
     meshcat.DeleteAddedControls()
@@ -242,18 +243,19 @@ def create_scene(sim_time_step=0.0001):
     world_id = plant.GetBodyFrameIdOrThrow(plant.world_body().index())
 
     # start adding RGB sensors to the diagram
-    num_cameras_at_levels = np.array([20, 15, 10, 8, 5])  #these are no of cameras required at each level of hemispherical dome (5 levels including base)
-    n_tracks = 15   #no of domes 
-    rad = np.linspace(1.0, 4.0, num = n_tracks)
+    num_cameras_at_levels = scene_setup_details["cams_at_level"]
+    n_tracks = scene_setup_details["tracks"]   #no of domes 
+    rad = scene_setup_details["domes_radius"]
     n_levels = len(num_cameras_at_levels)
     
     for dome_no, r in enumerate(rad):   #loop thru each dome
         # simulator = initialize_simulation(diagram)    
         # now loop thru each level (both theta, phi should be changed at same time to adjust camera)
-        hts = np.linspace(0, r, num = n_levels + 1)[:5]
+        hts = np.linspace(0.75, r, num = n_levels + 1)[:5]
         for level_no in range(n_levels):
             ht = hts[level_no]
-            phi = np.arcsin(ht/r)
+            phi = np.arcsin((ht)/r)
+            print(phi, "\t", -180*phi/np.pi)
             #generate points in a circle around the arm for a particular radius
             theta = np.linspace(0, 360, num=num_cameras_at_levels[level_no])
             for camera_no, t in enumerate(theta):
@@ -274,11 +276,18 @@ def create_scene(sim_time_step=0.0001):
 
                 #fix the camera position in world frame
                 #X_WB = xyz_rpy_deg([2, 0, 0.75], [-90, 0, 90])   #for first camera
-                # X_WB = xyz_rpy_deg([x, y, 0.75], [-90, 0, 90]) 
-                delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])  
-                delta_wrt_world_xy_plane = xyz_rpy_deg([0, 0, 0], [0, -phi, 0]) 
+                # X_WB = xyz_rpy_deg([x, y, 0.75], [-90, 0, 90])
+                
+                camera_vec_wrt_world_origin = np.array([r*np.cos(t)*np.cos(phi), r*np.cos(t)*np.sin(phi), ht])
+                dx = np.array([1, 0, 0])
+                dy = np.array([0, 1, 0])
+                phi_x = np.arccos(np.dot(camera_vec_wrt_world_origin, dx))
+                phi_y = np.arccos(np.dot(camera_vec_wrt_world_origin, dy))
+
                 X_WB = xyz_rpy_deg([r, 0, ht], [-90, 0, 90])
-                X_WB = delta_wrt_world_xy_plane @ delta_wrt_world_z  @  X_WB  
+                delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])   
+                delta_wrt_world_xy_plane = xyz_rpy_deg([0, 0, 0], [-phi_x, -phi_y, 0]) # 
+                X_WB = delta_wrt_world_xy_plane @ delta_wrt_world_z @ X_WB # delta_wrt_world_xy_plane
 
                 #determine P for this camera position
                 R = np.array(X_WB.rotation().matrix())
@@ -302,29 +311,6 @@ def create_scene(sim_time_step=0.0001):
                     sensor.query_object_input_port(),
                 )
                 sensors.append(sensor)
-    # Draw the frames
-    # for body_name in ["iiwa_link_1", "iiwa_link_2", "iiwa_link_3", "iiwa_link_4", "iiwa_link_5", "iiwa_link_6", "iiwa_link_7"]:
-    #     AddMultibodyTriad(plant.GetFrameByName(body_name), scene_graph)
-
-    # gripper = plant.GetBodyByName("iiwa_link_3", model)
-    #type of gripper: <class 'pydrake.multibody.tree.RigidBody_[float]'>
-
-    # type:<class 'pydrake.multibody.tree.BodyFrame_[float]'  --> same instance type as plant.world_frame()
-    # <BodyFrame_[float] name='iiwa_link_3' index=4 model_instance=2>
-    # link_0_pose = iiwa_link_0_frame.CalcPoseInBodyFrame()
-
-    # link_3_pose = iiwa_link_3_frame.GetFixedPoseInBodyFrame()
-    # print('link_3_pose:{}'.format(link_3_pose))
-
-    # print('gripper pose : {}'.format(gripper.get_pose_in_world()))
-    # gripper_context = gripper.DoAllocateContext()
-    # print(gripper)
-    # gripper_context  = gripper.index()   #gripper.index() is LeafSystem
-    # print_pose = builder.AddSystem(PrintPose(gripper.index()))
-    # builder.Connect(plant.get_body_poses_output_port(),
-    #                 print_pose.get_input_port())
-
-    # PrintPose(gripper.index()).Publish(gripper_context)
 
 
     # Finalize the plant after loading the scene.
@@ -344,10 +330,6 @@ def create_scene(sim_time_step=0.0001):
 
     diagram = builder.Build()
 
-    # sensors = []
-    # sensors.append(CameraSystem(0, meshcat, diagram, context))
-    # sensors.append(CameraSystem(1, meshcat, diagram, context))
-
     return diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, model, renderer_name, sensors, projection_matrices
 
 
@@ -357,7 +339,7 @@ def initialize_simulation(diagram):
     simulator.set_target_realtime_rate(1.)
     return simulator
 
-def takePic(scene_graph, sensor, context, camera_no, level_no, dome_no):
+def takePic(scene_graph, sensor, context, camera_no, level_no, dome_no, arm_position_index):
     diagram_context = context #diagram.CreateDefaultContext()
     sensor_context = sensor.GetMyMutableContextFromRoot(diagram_context)
     sg_context = scene_graph.GetMyMutableContextFromRoot(diagram_context)
@@ -365,8 +347,8 @@ def takePic(scene_graph, sensor, context, camera_no, level_no, dome_no):
     depth = sensor.depth_image_32F_output_port().Eval(sensor_context).data.squeeze(2)
     label = sensor.label_image_output_port().Eval(sensor_context).data
     #save images (r indicates dome, level_no indicates ht, camera_no indicates theta )
-    arm_conf_name = "r_" + str(dome_no) + "_h_" + str(level_no) + "_c_" + str(camera_no)
-    cv2.imwrite(arm_conf_name + ".jpg", cv2.cvtColor(color, cv2.COLOR_RGBA2BGRA))
+    arm_conf_name = "arm_" + str(arm_position_index) + "_r_" + str(dome_no) + "_h_" + str(level_no) + "_c_" + str(camera_no)
+    cv2.imwrite(datasetDir + arm_conf_name + ".jpg", cv2.cvtColor(color, cv2.COLOR_RGBA2BGRA))
     # fig, ax = plt.subplots(1, 1, figsize=(15, 10))
     # ax.imshow(color)
     # ax[1].imshow(depth)
@@ -450,11 +432,10 @@ def orient_arms(plant, iiwa_controller, model, context, plant_context, position_
     #step2: change individual link positions
     # iiwa_controller = iiwa_controller_fn(builder, plant, model)
     print(position_vector)
-    exit(0)
     context, plant_context = iiwa_position_set(context, plant, iiwa_controller, position_vector, model)
     return context, plant_context
 
-def get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model, sensor, context, camera_no, level_no, dome_no):
+def get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model, sensor, context, camera_no, level_no, dome_no, arm_position_index):
     #step1: get 3d points in that particular arm conf
     joint_frames = []  #these are frames at each of joint of model in plant
     for i in range(8):
@@ -464,8 +445,7 @@ def get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model,
 
     #step2: Take pic after orienting diff inks in arm 
     # Note: latest context is required for takePic fn
-    color, depth, arm_conf_name = takePic(scene_graph, sensor, context, camera_no, level_no, dome_no)
-    
+    color, depth, arm_conf_name = takePic(scene_graph, sensor, context, camera_no, level_no, dome_no,  arm_position_index)
     return key_points_3d, color, depth, arm_conf_name
 
 def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
@@ -495,7 +475,7 @@ def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
 					    "projected_location": key_points_2d[i, :].tolist()})
 
     #create json file in w mode and insert data 
-    with open(arm_conf_name + '.json', 'w') as f:
+    with open(datasetDir + arm_conf_name + '.json', 'w') as f:
         data_dict = {"camera_data":
                             {
                                 "location_worldframe": [ -75.051300048828125, 47.982898712158203, 91.198799133300781 ],
@@ -512,29 +492,52 @@ def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
 
 # Capture 
 def generate_dataset(args, sim_time_step):
-    diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, model, renderer_name, sensors, projection_matrices = create_scene(sim_time_step)
-    print('create scene done...')
+    
+    # Scene Setup
+    # num_cameras_at_levels = np.array([20, 15, 12, 8, 5])  #these are no of cameras required at each level of hemispherical dome (5 levels including base)
+    num_cameras_at_levels = [20, 15, 12, 8, 5]
+    n_tracks = 5   #no of domes 
+    rad = np.linspace(2.0, 3.0, num = n_tracks)
+    scene_setup_details = {"cams_at_level":num_cameras_at_levels,
+                     "tracks": n_tracks,
+                     "domes_radius" : rad}
+    # Different Arm positions
+    arm_positions = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                     [0.1, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7],
+                     [0.3, 0.4, 0.5, 0.6, 0.7, 0.6, 0.0],
+                     [0.5, 0.6, 0.7, 1.4, 0.4, 0.5, 0.0],
+                     [0.0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.0],
+                     [0.1, 1.7, 0.5, 0.8, 0.7, 0.3, 0.2]]
+    arm_position_index = 3
+
+    diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, model, renderer_name, sensors, projection_matrices = create_scene(sim_time_step, scene_setup_details)
+    args.joint_angles_vector = arm_positions[arm_position_index]
+    print(args.joint_angles_vector)
 
     context, plant_context = orient_arms(plant, iiwa_controller, model, diagram.CreateDefaultContext(), plant_context, args.joint_angles_vector)
+    
     # loop thru RGBD sensors
-    num_cameras_at_levels = np.array([20, 15, 12, 8, 5])  #these are no of cameras required at each level of hemispherical dome (5 levels including base)
-    n_tracks = 15   #no of domes 
-    rad = np.linspace(1.0, 4.0, num = n_tracks)
+    total_captures = 0
     n_levels = len(num_cameras_at_levels)
-    for dome_no, r in enumerate(rad):   #loop thru each dome
+
+    for dome_no, r in tqdm(enumerate(rad)):   #loop thru each dome
         # simulator = initialize_simulation(diagram)    
         # now loop thru each level (both theta, phi should be changed at same time to adjust camera)
         hts = np.linspace(0, r, num = n_levels + 1)[:5]
+        
         for level_no in range(n_levels):
             ht = hts[level_no]
             phi = np.arcsin(ht/r)
             #generate points in a circle around the arm for a particular radius
             theta = np.linspace(0, 360, num=num_cameras_at_levels[level_no])
+            
             for camera_no, t in enumerate(theta):
-                sensor = sensors[((dome_no + 1) * (level_no + 1)) + (camera_no + 1) - 1]
-                key_points_3d, color, depth, arm_conf_name = get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model, sensor, context, camera_no, level_no, dome_no)
+                sensor = sensors[total_captures]
+                key_points_3d, color, depth, arm_conf_name = get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model, sensor, context, camera_no, level_no, dome_no, arm_position_index)
                 #create json file based on the above information of 3d key points of joints and Projection matrix of current sensor
                 create_json(arm_conf_name, projection_matrices[((dome_no + 1) * (level_no + 1)) + (camera_no + 1) - 1], key_points_3d)
+                total_captures += 1
+                
 
     # model_file = 'clutter_maskrcnn_model.pt'
     # if not os.path.exists(model_file):
@@ -565,6 +568,7 @@ def generate_dataset(args, sim_time_step):
 
 if __name__ == "__main__":
     # Parse input arguments
+    datasetDir = "./dataset/"
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
@@ -582,4 +586,9 @@ if __name__ == "__main__":
     image_sensors = generate_dataset(args, sim_time_step=0.0001)  
 
 #python joints_extraction_3d.py -i ../dream_code/trained_models/kuka_dream_resnet_h.pth 
+
+# i
+# j
+# k
+# i*j*k + (0, 1, 2, 3, ..., k)
 
