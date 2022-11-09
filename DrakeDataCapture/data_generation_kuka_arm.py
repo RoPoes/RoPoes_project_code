@@ -43,7 +43,7 @@ from pydrake.geometry.render import (
     MakeRenderEngineVtk,
     RenderEngineVtkParams,
 )
-from pydrake.math import RigidTransform, RollPitchYaw
+from pydrake.math import RigidTransform, RollPitchYaw, RotationMatrix
 from pydrake.multibody.parsing import Parser
 from pydrake.multibody.plant import AddMultibodyPlantSceneGraph
 from pydrake.multibody.tree import BodyIndex
@@ -174,7 +174,9 @@ def model_inspector(filename): # filename will be model's sdf or urdf file
 
 def xyz_rpy_deg(xyz, rpy_deg):
     """Shorthand for defining a pose."""
+    #Body-fixed (intrinsic) Z-Y-X rotation  = Rx * Ry *Rz
     rpy_deg = np.asarray(rpy_deg)
+    # print(type(RollPitchYaw(rpy_deg * np.pi / 180)))
     return RigidTransform(RollPitchYaw(rpy_deg * np.pi / 180), xyz)
 
 def determine_R_t(R, t):
@@ -254,8 +256,8 @@ def create_scene(sim_time_step=0.0001, scene_setup_details=None):
         hts = np.linspace(0.75, r, num = n_levels + 1)[:5]
         for level_no in range(n_levels):
             ht = hts[level_no]
-            phi = np.arcsin((ht)/r)
-            print(phi, "\t", -180*phi/np.pi)
+            phi = np.arcsin((ht)/r) # radians
+            # print(phi, "\tIn degrees: ", -180*phi/np.pi)
             #generate points in a circle around the arm for a particular radius
             theta = np.linspace(0, 360, num=num_cameras_at_levels[level_no])
             for camera_no, t in enumerate(theta):
@@ -278,16 +280,57 @@ def create_scene(sim_time_step=0.0001, scene_setup_details=None):
                 #X_WB = xyz_rpy_deg([2, 0, 0.75], [-90, 0, 90])   #for first camera
                 # X_WB = xyz_rpy_deg([x, y, 0.75], [-90, 0, 90])
                 
-                camera_vec_wrt_world_origin = np.array([r*np.cos(t)*np.cos(phi), r*np.cos(t)*np.sin(phi), ht])
+                # camera_vec_wrt_world_origin = np.array([r*np.cos(t)*np.cos(phi), r*np.cos(t)*np.sin(phi), ht])
+                # dx = np.array([1, 0, 0])
+                # dy = np.array([0, 1, 0])
+                # phi_x = np.arccos(np.dot(camera_vec_wrt_world_origin, dx))
+                # phi_y = np.arccos(np.dot(camera_vec_wrt_world_origin, dy))
+
+                # X_WB below is T_camera_wrt_world_frame
+                # X world is pointing outward, Y world is toward right, Z world is up
+                X_WB = xyz_rpy_deg([r, 0, 0], [-90, 0, 90])  
+                # now we want to place cameras in track around Z axis of world, so in fixed angle representation we need to pre multiply the Transformation matrix
+                # t = 0
+                delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])
+                print("delta_wrt_world_z: \n", delta_wrt_world_z)
+
+                # Finding vector in the world frame with respect to which we rotate the camera by an angle phi
                 dx = np.array([1, 0, 0])
                 dy = np.array([0, 1, 0])
-                phi_x = np.arccos(np.dot(camera_vec_wrt_world_origin, dx))
-                phi_y = np.arccos(np.dot(camera_vec_wrt_world_origin, dy))
+                n_cap_axis_angle = np.cos(t)*dx + np.sin(t)*dy # 3,1
+                kx = n_cap_axis_angle[0]
+                ky = n_cap_axis_angle[1]
+                kz = n_cap_axis_angle[2]
 
-                X_WB = xyz_rpy_deg([r, 0, ht], [-90, 0, 90])
-                delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])   
-                delta_wrt_world_xy_plane = xyz_rpy_deg([0, 0, 0], [-phi_x, -phi_y, 0]) # 
-                X_WB = delta_wrt_world_xy_plane @ delta_wrt_world_z @ X_WB # delta_wrt_world_xy_plane
+                n_cap_skew_matrix = np.array([[0, -kz, ky], [kz, 0, -kx], [-ky, kx, 0]]) 
+                # converting axis angle representation to rotation matrix
+                R = np.eye(3) + (np.sin(phi) * n_cap_skew_matrix) + (1 - np.cos(phi))*n_cap_skew_matrix@n_cap_skew_matrix
+                
+                # print("R_before: ", R)
+                R = RotationMatrix(R)
+                # print("R_after: ", R)
+                phi_angles = RollPitchYaw(R) #RollPitchYaw(roll=1.0089123790536618, pitch=0.15020320690822656, yaw=0.08303612619031364)
+                roll = 180 * phi_angles.roll_angle() / np.pi
+                pitch = 180 * phi_angles.pitch_angle() / np.pi
+                yaw = 180 * phi_angles.yaw_angle() / np.pi
+                # print("phi_angles: ", phi_angles, "\nrpy: ", roll, pitch, yaw)
+                phi_angles = RollPitchYaw([roll, pitch, yaw])
+                # phi_angles.SetFromRotationMatrix(R)
+                T = RigidTransform(phi_angles, [0,0,0]) #180*phi_angles/np.pi
+
+                # T  = [R | t]
+                # T = np.vstack((np.hstack((R, np.zeros((3,1)))), np.array([0, 0, 0, 1]))) # converting
+                # print("New T: ", T, T.shape)
+                # print("delta_wrt_world_z: ", delta_wrt_world_z.shape)
+
+
+                # delta_wrt_camera_z = xyz_rpy_deg([0, 0, 0], [phi, 0, 0])
+                # delta_wrt_world_xy_plane = xyz_rpy_deg([0, 0, 0], [-phi_x, -phi_y, 0]) # 
+                # X_WB = delta_wrt_world_xy_plane @ delta_wrt_world_z @ X_WB # delta_wrt_world_xy_plane
+                X_WB = delta_wrt_world_z @ T @ X_WB #@ delta_wrt_camera_z
+
+                print("_r_" + str(dome_no) + "_h_" + str(level_no) + "_c_" + str(camera_no), ": ", phi_angles)
+
 
                 #determine P for this camera position
                 R = np.array(X_WB.rotation().matrix())
