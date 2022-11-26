@@ -5,7 +5,7 @@
 import argparse
 import os
 import sys
-sys.path.append('..')
+sys.path.append('dream_code')
 import dream.analysis as dream_analysis
 
 

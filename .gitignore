@@ -1,0 +1,5 @@
+DrakeDataCapture/dataset/*
+DrakeDataCapture/other_dataset/*
+DrakeDataCapture/backgrounds/*
+training/*
+inference/*

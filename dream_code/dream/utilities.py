@@ -57,7 +57,7 @@ def is_ndds_dataset(input_dir, data_extension="json"):
     data_filenames = [f for f in dirlist if f.endswith(data_full_ext)]
 
     # Extract name from json file
-    data_names = [os.path.splitext(f)[0] for f in data_filenames if f[0].isdigit()]
+    data_names = [os.path.splitext(f)[0] for f in data_filenames if f[0:3] == "arm"]
 
     is_ndds_dataset = True if data_names else False
 
@@ -122,14 +122,14 @@ def find_ndds_data_in_dir(
     data_filenames.sort()
     # print('data filenames: {}'.format(data_filenames))
     # data_names = [os.path.splitext(f)[0] for f in data_filenames if f[0].isdigit()]
-    data_names = [os.path.splitext(f)[0] for f in data_filenames if f[0] == 'r']
+    data_names = [os.path.splitext(f)[0] for f in data_filenames if f[0:3] == 'arm']
 
     # If there are no matching json files -- this is not an NDDS dataset -- return None
     if not data_names:
         return None, None
 
     # data_paths = [os.path.join(input_dir, f) for f in data_filenames if f[0].isdigit()]
-    data_paths = [os.path.join(input_dir, f) for f in data_filenames if f[0] == 'r']
+    data_paths = [os.path.join(input_dir, f) for f in data_filenames if f[0:3] == 'arm']
 
     if requested_image_types == "all":
         # Detect based on first entry

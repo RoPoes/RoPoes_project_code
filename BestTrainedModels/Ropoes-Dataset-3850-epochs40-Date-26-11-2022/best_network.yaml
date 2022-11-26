@@ -1,0 +1,82 @@
+!!omap
+- data_path: /media/marsar/3bd8734a-7c5f-46b9-b1a0-5d20fccf35d4/PhD/ResearchTrack2/github-ropoes/RoPoes_project_code/DrakeDataCapture/dataset/
+- manipulator: !!omap
+  - name: kuka
+  - keypoints:
+    - name: iiwa7_link_0
+      friendly_name: Base
+      ros_frame: iiwa7_link_0
+    - name: iiwa7_link_1
+      friendly_name: Joint1
+      ros_frame: iiwa7_link_1
+    - name: iiwa7_link_2
+      friendly_name: Joint2
+      ros_frame: iiwa7_link_2
+    - name: iiwa7_link_3
+      friendly_name: Joint3
+      ros_frame: iiwa7_link_3
+    - name: iiwa7_link_4
+      friendly_name: Joint4
+      ros_frame: iiwa7_link_4
+    - name: iiwa7_link_5
+      friendly_name: Joint5
+      ros_frame: iiwa7_link_5
+    - name: iiwa7_link_6
+      friendly_name: Joint6
+      ros_frame: iiwa7_link_6
+    - name: iiwa7_link_7
+      friendly_name: Wrist
+      ros_frame: iiwa7_link_7
+- architecture: !!omap
+  - type: vgg
+  - target: belief_maps
+  - input_heads:
+    - image_rgb
+  - output_heads:
+    - belief_maps
+  - image_normalization: !!omap
+    - mean:
+      - 0.5
+      - 0.5
+      - 0.5
+    - stdev:
+      - 0.5
+      - 0.5
+      - 0.5
+  - loss: !!omap
+    - type: mse
+  - image_preprocessing: shrink-and-crop
+- training: !!omap
+  - config: !!omap
+    - epochs: 75
+    - training_data_fraction: 0.8
+    - validation_data_fraction: 0.19999999999999996
+    - batch_size: 10
+    - data_augmentation: !!omap
+      - image_rgb: true
+    - worker_size: 3
+    - optimizer: !!omap
+      - type: adam
+      - learning_rate: 0.00015
+    - image_preprocessing: shrink-and-crop
+    - image_raw_resolution:
+      - 640
+      - 480
+    - net_input_resolution:
+      - 400
+      - 400
+    - net_output_resolution:
+      - 100
+      - 100
+  - platform: !!omap
+    - user: marsar
+    - hostname: marsar-desktop
+    - gpu_ids: []
+  - results: !!omap
+    - epochs_trained: 36
+    - training_loss: !!omap
+      - mean: 5.196171972689721e-05
+      - stdev: 1.3994960974347183e-05
+    - validation_loss: !!omap
+      - mean: 0.00015199896252060963
+      - stdev: 5.070812699271903e-05

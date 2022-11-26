@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "/home/jayaram/robot_manipulation_drake/ropoes/bin/python3"
+    "python.pythonPath": "/home/jayaram/robot_manipulation_drake/ropoes/bin/python3",
+    "ros.distro": "noetic"
 }

@@ -551,7 +551,7 @@ def generate_dataset(args, sim_time_step):
                      [0.5, 0.6, 0.7, 1.4, 0.4, 0.5, 0.0],
                      [0.0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.0],
                      [0.1, 1.7, 0.5, 0.8, 0.7, 0.3, 0.2]]
-    arm_position_index = 3
+    arm_position_index = 0
 
     diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, model, renderer_name, sensors, projection_matrices = create_scene(sim_time_step, scene_setup_details)
     args.joint_angles_vector = arm_positions[arm_position_index]

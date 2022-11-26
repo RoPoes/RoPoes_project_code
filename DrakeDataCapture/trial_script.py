@@ -1,7 +1,9 @@
+# date: Nov 26
 # Import some basic libraries and functions for this tutorial.
 from calendar import c
 import numpy as np
 import os
+import random
 import matplotlib.pyplot as plt
 import copy
 import time
@@ -14,6 +16,7 @@ import cv2
 import keyboard
 import json
 from IPython.display import clear_output, display
+import torchvision.transforms as T
 sys.path.append('/home/jayaram/robot_manipulation_drake/Ropoes_project_code/dream_code')
 #from dream_code.scripts.network_inference import network_inference
 
@@ -247,8 +250,11 @@ def create_scene(sim_time_step=0.0001, scene_setup_details=None):
     # start adding RGB sensors to the diagram
     num_cameras_at_levels = scene_setup_details["cams_at_level"]
     n_tracks = scene_setup_details["tracks"]   #no of domes 
-    rad = scene_setup_details["domes_radius"]
+    all_radius = scene_setup_details["domes_radius"]
+    height_acc_to_arm_level = scene_setup_details["heights_acc_arm_pose"]
+    arm_position_index = scene_setup_details["arm_pose"]
     n_levels = len(num_cameras_at_levels)
+    h = height_acc_to_arm_level[arm_position_index]
     
 
 
@@ -282,80 +288,80 @@ def create_scene(sim_time_step=0.0001, scene_setup_details=None):
 
     # X_WB below is T_camera_wrt_world_frame
     # X world is pointing outward, Y world is toward right, Z world is up
-    r = 3.5
-    phi_initial = 0#180 * np.arcsin(0.75/r)/np.pi
-    for phi in np.linspace(0,90-phi_initial,num=6)[:5]:
-        print("phi: ", phi)
-        
-        for t in np.linspace(0,360,num=10):
-
-            X_WB = xyz_rpy_deg([r, 0, 0], [-90, 0, 90])
-
-            # now we want to place cameras in track around Z axis of world, so in fixed angle representation we need to pre multiply the Transformation matrix
-            # t = 0
-            delta_wrt_world_y = xyz_rpy_deg([0, 0, 0], [0, -phi, 0])
-            delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])
-            # print("delta_wrt_world_z: \n", delta_wrt_world_z)
-
-            # Finding vector in the world frame with respect to which we rotate the camera by an angle phi
-            # dx = np.array([1, 0, 0])
-            # dy = np.array([0, 1, 0])
-            # n_cap_axis_angle = np.cos(t)*dx + np.sin(t)*dy # 3,1
-            # kx = n_cap_axis_angle[0]
-            # ky = n_cap_axis_angle[1]
-            # kz = n_cap_axis_angle[2]
-
-            # n_cap_skew_matrix = np.array([[0, -kz, ky], [kz, 0, -kx], [-ky, kx, 0]]) 
-            # # converting axis angle representation to rotation matrix
-            # R = np.eye(3) + (np.sin(phi) * n_cap_skew_matrix) + (1 - np.cos(phi))*n_cap_skew_matrix@n_cap_skew_matrix
+    #we will initially place camera at ht=0.75 initially , as ht level goes beyond 2, we need to consider camera at ht=0
+    
+    for r in all_radius:
+        phi_initial = 180 * np.arcsin(h/r)/np.pi
+        for height_level, phi in enumerate(np.linspace(0, 90-phi_initial, num=6)[:4]):
+            print("phi: ", phi)
             
-            # # print("R_before: ", R)
-            # R = RotationMatrix(R)
-            # # print("R_after: ", R)
-            # phi_angles = RollPitchYaw(R) #RollPitchYaw(roll=1.0089123790536618, pitch=0.15020320690822656, yaw=0.08303612619031364)
-            # roll = 180 * phi_angles.roll_angle() / np.pi
-            # pitch = 180 * phi_angles.pitch_angle() / np.pi
-            # yaw = 180 * phi_angles.yaw_angle() / np.pi
-            # # print("phi_angles: ", phi_angles, "\nrpy: ", roll, pitch, yaw)
-            # phi_angles = RollPitchYaw([roll, pitch, yaw])
-            # # phi_angles.SetFromRotationMatrix(R)
-            # T = RigidTransform(phi_angles, [0,0,0]) #180*phi_angles/np.pi
+            for t in np.linspace(0,360,num=num_cameras_at_levels[height_level]):
+                # now we want to place cameras in track around Z axis of world, so in fixed angle representation we need to pre multiply the Transformation matrix
 
-            # T  = [R | t]
-            # T = np.vstack((np.hstack((R, np.zeros((3,1)))), np.array([0, 0, 0, 1]))) # converting
-            # print("New T: ", T, T.shape)
-            # print("delta_wrt_world_z: ", delta_wrt_world_z.shape)
+                X_WB = xyz_rpy_deg([r, 0, h], [-90, 0, 90])
+                delta_wrt_world_y = xyz_rpy_deg([0, 0, 0], [0, -phi, 0])
+                delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, t])
+                # print("delta_wrt_world_z: \n", delta_wrt_world_z)
+
+                # Finding vector in the world frame with respect to which we rotate the camera by an angle phi
+                # dx = np.array([1, 0, 0])
+                # dy = np.array([0, 1, 0])
+                # n_cap_axis_angle = np.cos(t)*dx + np.sin(t)*dy # 3,1
+                # kx = n_cap_axis_angle[0]
+                # ky = n_cap_axis_angle[1]
+                # kz = n_cap_axis_angle[2]
+
+                # n_cap_skew_matrix = np.array([[0, -kz, ky], [kz, 0, -kx], [-ky, kx, 0]]) 
+                # # converting axis angle representation to rotation matrix
+                # R = np.eye(3) + (np.sin(phi) * n_cap_skew_matrix) + (1 - np.cos(phi))*n_cap_skew_matrix@n_cap_skew_matrix
+                
+                # # print("R_before: ", R)
+                # R = RotationMatrix(R)
+                # # print("R_after: ", R)
+                # phi_angles = RollPitchYaw(R) #RollPitchYaw(roll=1.0089123790536618, pitch=0.15020320690822656, yaw=0.08303612619031364)
+                # roll = 180 * phi_angles.roll_angle() / np.pi
+                # pitch = 180 * phi_angles.pitch_angle() / np.pi
+                # yaw = 180 * phi_angles.yaw_angle() / np.pi
+                # # print("phi_angles: ", phi_angles, "\nrpy: ", roll, pitch, yaw)
+                # phi_angles = RollPitchYaw([roll, pitch, yaw])
+                # # phi_angles.SetFromRotationMatrix(R)
+                # T = RigidTransform(phi_angles, [0,0,0]) #180*phi_angles/np.pi
+
+                # T  = [R | t]
+                # T = np.vstack((np.hstack((R, np.zeros((3,1)))), np.array([0, 0, 0, 1]))) # converting
+                # print("New T: ", T, T.shape)
+                # print("delta_wrt_world_z: ", delta_wrt_world_z.shape)
 
 
-            # delta_wrt_camera_z = xyz_rpy_deg([0, 0, 0], [phi, 0, 0])
-            # delta_wrt_world_xy_plane = xyz_rpy_deg([0, 0, 0], [-phi_x, -phi_y, 0]) # 
-            # X_WB = delta_wrt_world_xy_plane @ delta_wrt_world_z @ X_WB # delta_wrt_world_xy_plane
-            X_WB = delta_wrt_world_z @ delta_wrt_world_y @ X_WB #@ delta_wrt_camera_z
+                # delta_wrt_camera_z = xyz_rpy_deg([0, 0, 0], [phi, 0, 0])
+                # delta_wrt_world_xy_plane = xyz_rpy_deg([0, 0, 0], [-phi_x, -phi_y, 0]) # 
+                # X_WB = delta_wrt_world_xy_plane @ delta_wrt_world_z @ X_WB # delta_wrt_world_xy_plane
+                X_WB = delta_wrt_world_z @ delta_wrt_world_y @ X_WB #@ delta_wrt_camera_z
 
 
 
-            #determine P for this camera position
-            R = np.array(X_WB.rotation().matrix())
-            t = X_WB.translation()
-            intrinsic_matrix = intrinsics.intrinsic_matrix()
-            # print('intrinsic matrix: {}'.format(intrinsic_matrix))
-            P = intrinsic_matrix @ np.hstack((R.T, -R.T @ t.reshape(-1, 1)))
-            projection_matrices.append(P)
+                #determine P for this camera position
+                R = np.array(X_WB.rotation().matrix())
+                t = X_WB.translation()
+                intrinsic_matrix = intrinsics.intrinsic_matrix()
+                # print('intrinsic matrix: {}'.format(intrinsic_matrix))
+                P = intrinsic_matrix @ np.hstack((R.T, -R.T @ t.reshape(-1, 1)))
+                projection_matrices.append(P)
 
-            # print('rotation matrix: {}'.format(type(np.array(X_WB_2.rotation().matrix()))))
-            #roll, pitch, yaw along X, Y Z directions (fixed angle representation)
-            sensor = RgbdSensor(
-                world_id,
-                X_PB=X_WB,
-                color_camera=color_camera,
-                depth_camera=depth_camera,
-            )
-            builder.AddSystem(sensor)
-            builder.Connect(
-                scene_graph.get_query_output_port(),
-                sensor.query_object_input_port(),
-            )
-            sensors.append(sensor)
+                # print('rotation matrix: {}'.format(type(np.array(X_WB_2.rotation().matrix()))))
+                #roll, pitch, yaw along X, Y Z directions (fixed angle representation)
+                sensor = RgbdSensor(
+                    world_id,
+                    X_PB=X_WB,
+                    color_camera=color_camera,
+                    depth_camera=depth_camera,
+                )
+                builder.AddSystem(sensor)
+                builder.Connect(
+                    scene_graph.get_query_output_port(),
+                    sensor.query_object_input_port(),
+                )
+                sensors.append(sensor)
 
 
     # Finalize the plant after loading the scene.
@@ -384,7 +390,7 @@ def initialize_simulation(diagram):
     simulator.set_target_realtime_rate(1.)
     return simulator
 
-def takePic(scene_graph, sensor, context, camera_no, level_no, dome_no, arm_position_index):
+def takePic(scene_graph, sensor, context, camera_no, level_no, dome_no, arm_position_index, backgrounds):
     diagram_context = context #diagram.CreateDefaultContext()
     sensor_context = sensor.GetMyMutableContextFromRoot(diagram_context)
     sg_context = scene_graph.GetMyMutableContextFromRoot(diagram_context)
@@ -393,7 +399,15 @@ def takePic(scene_graph, sensor, context, camera_no, level_no, dome_no, arm_posi
     label = sensor.label_image_output_port().Eval(sensor_context).data
     #save images (r indicates dome, level_no indicates ht, camera_no indicates theta )
     arm_conf_name = "arm_" + str(arm_position_index) + "_r_" + str(dome_no) + "_h_" + str(level_no) + "_c_" + str(camera_no)
-    cv2.imwrite(datasetDir + arm_conf_name + ".jpg", cv2.cvtColor(color, cv2.COLOR_RGBA2BGRA))
+    # print(len(backgrounds), len(backgrounds[0], len(backgrounds)))
+    if camera_no % 3 == 0:
+        cv2.imwrite(datasetDir + arm_conf_name + ".jpg", cv2.cvtColor(color, cv2.COLOR_RGBA2BGRA))
+    elif camera_no % 3 == 1:
+        color = augmentBackground(color, backgrounds[0]) # scenery
+        cv2.imwrite(datasetDir + arm_conf_name + ".jpg", color)
+    elif camera_no % 3 == 2:
+        color = augmentBackground(color, backgrounds[1]) # Indoor
+        cv2.imwrite(datasetDir + arm_conf_name + ".jpg", color)
     # fig, ax = plt.subplots(1, 1, figsize=(15, 10))
     # ax.imshow(color)
     # ax[1].imshow(depth)
@@ -476,11 +490,43 @@ def orient_arms(plant, iiwa_controller, model, context, plant_context, position_
 
     #step2: change individual link positions
     # iiwa_controller = iiwa_controller_fn(builder, plant, model)
-    print(position_vector)
+    # print(position_vector)
     context, plant_context = iiwa_position_set(context, plant, iiwa_controller, position_vector, model)
     return context, plant_context
 
-def get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model, sensor, context, camera_no, level_no, dome_no, arm_position_index):
+
+def compose(foreground, mask, background):
+    # resize background
+    background = cv2.resize(background, foreground.shape[:2][::-1])
+    # Subtract the foreground area from the background
+    background = background*((255 - mask.reshape(foreground.shape[0], foreground.shape[1], 1))/255)
+    # Finally, add the foreground
+    composed_image = background + foreground
+    return composed_image
+
+def most_frequent_color(im):
+    if len(im.shape) == 3:
+        u, c = np.unique(im.reshape([1, -1, 3]), axis = 1, return_counts=True)
+        t = list(zip(c, u[0]))
+        t = sorted(t, key = lambda x : x[0])
+        return t[len(t) - 1][1]
+    else:
+        print("Grayscale image doesn't make sense here!")
+
+# replace the background
+def augmentBackground(colorImg, backgrounds):
+
+    colorImg = cv2.cvtColor(colorImg, cv2.COLOR_RGBA2BGR)
+    bg = random.choice(backgrounds) # selected background
+
+    # segment the sky blue color
+    background_color = np.array([255,229,204])#most_frequent_color(colorImg) #np.array([204, 229, 255])#[204, 229, 255]
+    mask = 255 - cv2.inRange(colorImg, background_color, background_color)
+    masked = cv2.bitwise_and(colorImg, colorImg, mask=mask)
+    composed_image =  compose(masked, mask, bg)
+    return composed_image
+
+def get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model, sensor, context, camera_no, level_no, dome_no, arm_position_index, backgrounds):
     #step1: get 3d points in that particular arm conf
     joint_frames = []  #these are frames at each of joint of model in plant
     for i in range(8):
@@ -488,9 +534,11 @@ def get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model,
     key_points_3d = get_3d_joints(plant_context, joint_frames)
     # print('3d keypoints: \n {}'.format(key_points_3d))   #there are 8 joints in kuka arm
 
-    #step2: Take pic after orienting diff inks in arm 
+    #step2: Take pic after orienting diff inks in arm
     # Note: latest context is required for takePic fn
-    color, depth, arm_conf_name = takePic(scene_graph, sensor, context, camera_no, level_no, dome_no,  arm_position_index)
+    # print(len(backgrounds), len(backgrounds[1]))
+    color, depth, arm_conf_name = takePic(scene_graph, sensor, context, camera_no, level_no, dome_no, arm_position_index, backgrounds)
+
     return key_points_3d, color, depth, arm_conf_name
 
 def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
@@ -535,44 +583,105 @@ def create_json(arm_conf_name, P, key_points_3d):  #n*3   (n = 7)
                    }
         json.dump(data_dict, f, indent = 5)
 
+def load_backgrounds(path=None):
+    import glob
+    imagesScenery = []
+    imagesIndoor = []
+
+    # Scenery Type of images
+    filesJPEG = glob.glob(path + "/Scenery" + '/**/*.JPEG', recursive=True)
+    filesjpeg = glob.glob(path + "/Scenery" + '/**/*.jpeg', recursive=True)
+    filesJPG = glob.glob(path + "/Scenery" + '/**/*.JPG', recursive=True)
+    filesjpg = glob.glob(path + "/Scenery" + '/**/*.jpg', recursive=True)
+    filesScenery = filesJPEG + filesjpeg + filesJPG + filesjpg
+
+    # Indoor type of images
+    filesJPEG = glob.glob(path + "/Indoor" + '/**/*.JPEG', recursive=True)
+    filesJPG = glob.glob(path + "/Indoor" + '/**/*.JPG', recursive=True)
+    filesjpg = glob.glob(path + "/Indoor" + '/**/*.jpg', recursive=True)
+    filesjpeg = glob.glob(path + "/Indoor" + '/**/*.jpeg', recursive=True)
+    filesIndoor = filesJPEG + filesjpeg + filesJPG + filesjpg
+
+    for filename in tqdm(filesScenery):#os.listdir(path):
+        img = cv2.imread(filename)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # img = cv2.resize(img, (640,480))
+        if img is not None:
+            imagesScenery.append(img)
+    
+    for filename in tqdm(filesIndoor):#os.listdir(path):
+        img = cv2.imread(filename)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # img = cv2.resize(img, (640,480))
+        if img is not None:
+            imagesIndoor.append(img)
+
+    print("Loaded All Backgrounds")
+    return [imagesScenery, imagesIndoor]
+
 # Capture 
 def generate_dataset(args, sim_time_step):
     
     # Scene Setup
+    backgrounds = load_backgrounds("backgrounds/")
     # num_cameras_at_levels = np.array([20, 15, 12, 8, 5])  #these are no of cameras required at each level of hemispherical dome (5 levels including base)
     num_cameras_at_levels = [20, 15, 12, 8, 5]
     n_tracks = 5   #no of domes 
-    rad = np.linspace(2.0, 3.0, num = n_tracks)
-    scene_setup_details = {"cams_at_level":num_cameras_at_levels,
-                     "tracks": n_tracks,
-                     "domes_radius" : rad}
+    all_radius = np.linspace(2.0, 3.0, num = n_tracks)
     # Different Arm positions
     arm_positions = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                      [0.1, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7],
                      [0.3, 0.4, 0.5, 0.6, 0.7, 0.6, 0.0],
                      [0.5, 0.6, 0.7, 1.4, 0.4, 0.5, 0.0],
-                     [0.0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.0],
-                     [0.1, 1.7, 0.5, 0.8, 0.7, 0.3, 0.2]]
-    arm_position_index = 0
+                     [0.2, 0.3, 1.2, 4.7, 0.0, 0.0, 0.0],
+                     [0.2, 0.3, 1.2, 4.7, 1.5, 1.4, 0.5],
+                     [0.2, 0.3, 1.2, 3.7, 0.0, 0.0, 0.0],
+                     [0.2, 0.9, 1.2, 4.7, 0.0, 0.0, 0.0],
+                     [0.2, 1.4, 1.2, 4.7, 0.5, 1.1, 0.7],
+                     [0.1, 1.7, 0.5, 0.8, 0.7, 0.3, 0.2],
+                     [0.1, 1.3, 1.4, 1.4, 1.3, 0.3, 0.2],
+                     [2.1, 5.2, 2.5, 4.3, 6.7, 4.7, 5.9],
+                     [1.5, 4.3, 3.4, 1.7, 2.9, 7.4, 1.1],
+                     [1.5, 1.3, 3.4, 5.7, 4.9, 1.4, 1.1],
+                     [0.5, 0.1, 0.7, 1.6, 6.3, 1.6, 0.1], # Test Dataset 1
+                     [1.8, 0.3, 1.5, 0.6, 0.3, 0.6, 3.1], # Test Dataset 2
+                     ]
+    # arm_position_index = 13
 
-    diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, model, renderer_name, sensors, projection_matrices = create_scene(sim_time_step, scene_setup_details)
-    args.joint_angles_vector = arm_positions[arm_position_index]
-    print(args.joint_angles_vector)
-
-    context, plant_context = orient_arms(plant, iiwa_controller, model, diagram.CreateDefaultContext(), plant_context, args.joint_angles_vector)
+    height_acc_to_arm_level = [0.65, 0.65, 0.65, 0.55, 0.5, 0.4, 0.3, 0.3, 0.3, 0.31, 0.37, 0.38, 0.4, 0.45, 0.45, 0.45]
     
-    # loop thru RGBD sensors
-    total_captures = 0
-    n_levels = len(num_cameras_at_levels)
+    
+    for arm_position_index in range(14,16):
+    
+        scene_setup_details = {"cams_at_level":num_cameras_at_levels,
+                        "tracks": n_tracks,
+                        "domes_radius" : all_radius,
+                        "heights_acc_arm_pose" : height_acc_to_arm_level,
+                        "arm_pose": arm_position_index}
 
-    for level_no, phi in enumerate(np.linspace(0,90,num=6)):
-        for camera_no, t in enumerate(np.linspace(0,360,num=10)):
-                sensor = sensors[total_captures]
-                key_points_3d, color, depth, arm_conf_name = get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model, sensor, context, camera_no, level_no, 0, arm_position_index)
-                #create json file based on the above information of 3d key points of joints and Projection matrix of current sensor
-                create_json(arm_conf_name, projection_matrices[((1) * (level_no + 1)) + (camera_no + 1) - 1], key_points_3d)
-                total_captures += 1
-                
+        diagram, builder, plant, plant_context, visualizer, scene_graph, iiwa_controller, model, renderer_name, sensors, projection_matrices = create_scene(sim_time_step, scene_setup_details)
+        args.joint_angles_vector = arm_positions[arm_position_index]
+        print(args.joint_angles_vector)
+
+        context, plant_context = orient_arms(plant, iiwa_controller, model, diagram.CreateDefaultContext(), plant_context, args.joint_angles_vector)
+        
+        # loop thru RGBD sensors
+        sensor_no = 0
+        n_levels = len(num_cameras_at_levels)
+
+        # for level_no, phi in enumerate(np.linspace(0,90,num=6)):
+        #     for camera_no, t in enumerate(np.linspace(0,360,num=10)):
+        for dome_no, r in enumerate(all_radius):
+            phi_initial = 180 * np.arcsin(0.75/r)/np.pi
+            for height_level, phi in enumerate(np.linspace(0, 90-phi_initial, num=6)[:4]):
+                print("phi: ", phi)
+                for camera_no, t in enumerate(np.linspace(0,360,num_cameras_at_levels[height_level])):
+                        sensor = sensors[sensor_no]
+                        key_points_3d, color, depth, arm_conf_name = get_key_points_3d_from_camera_pose(plant, plant_context, scene_graph, model, sensor, context, camera_no, height_level, dome_no, arm_position_index, backgrounds)
+                        #create json file based on the above information of 3d key points of joints and Projection matrix of current sensor
+                        create_json(arm_conf_name, projection_matrices[sensor_no], key_points_3d)
+                        sensor_no += 1
+                    
 
     # model_file = 'clutter_maskrcnn_model.pt'
     # if not os.path.exists(model_file):

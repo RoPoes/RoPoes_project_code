@@ -22,17 +22,17 @@
             ]
         },
         {
-            "name": "/home/jayaram/mount_ada_node/dream_paper/DREAM/scripts/network_inference_dataset.py",
+            "name": "dream_code/scripts/network_inference_dataset.py",
             "type": "python",
             "request": "launch",
-            "program": "/home/jayaram/mount_ada_node/dream_paper/DREAM/scripts/network_inference_dataset.py",
+            "program": "dream_code/scripts/network_inference_dataset.py",
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
                 "-i",
-                "/home/jayaram/mount_ada_node/dream_paper/DREAM/trained_models/baxter_dream_vgg_q.pth",
+                "/media/marsar/3bd8734a-7c5f-46b9-b1a0-5d20fccf35d4/PhD/ResearchTrack2/github-ropoes/RoPoes_project_code/BestTrainedModels/Ropoes-Dataset-3850-epochs40-Date-26-11-2022/best_network.pth",
                 "-d",
-                "/home/jayaram/dream_paper_data/synthetic/baxter_synth_test_dr",
+                "/media/marsar/3bd8734a-7c5f-46b9-b1a0-5d20fccf35d4/PhD/ResearchTrack2/github-ropoes/RoPoes_project_code/training/train_data/",
                 "-b",
                 "16",
                 "-w",
@@ -50,8 +50,7 @@
             "justMyCode": false,
             "args": [
                 "--i",
-                "/home/jayaram/robot_manipulation_drake/Ropoes_project_code/training/data/",
-                //"/home/jayaram/dream_paper_data/synthetic/kuka_synth_test_dr_limited",
+                "/media/marsar/3bd8734a-7c5f-46b9-b1a0-5d20fccf35d4/PhD/ResearchTrack2/github-ropoes/RoPoes_project_code/DrakeDataCapture/dataset/",
                 "--t",
                 "0.8",
                 "-m",
@@ -59,11 +58,11 @@
                 "-ar",
                 "dream_code/arch_configs/dream_vgg_q.yaml",
                 "-e",
-                "2",
+                "75",
                 "-lr",
                 "0.00015",
                 "-b", //batch size
-                "7",
+                "10",
                 "-w", //n_workers
                 "3",
                 "-rt",
