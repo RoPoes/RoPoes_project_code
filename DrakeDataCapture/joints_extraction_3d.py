@@ -10,7 +10,8 @@ import sys
 import itertools
 from copy import deepcopy
 import cv2
-sys.path.append('/home/jayaram/robot_manipulation_drake/Ropoes_project_code')
+from scipy import linalg
+sys.path.append('.')
 from dream_code.scripts.network_inference import network_inference
 
 from pydrake.common import FindResourceOrThrow, temp_directory
@@ -20,6 +21,7 @@ from pydrake.geometry import (
     Role,
     StartMeshcat,
 )
+from pydrake.all import InverseDynamicsController, LeafSystem, AbstractValue
 # from pydrake.math import RigidTransform, RollPitchYaw
 from pydrake.multibody.meshcat import JointSliders
 # from pydrake.multibody.parsing import Parser
@@ -181,11 +183,87 @@ def determine_transformation_matrices(R, t):
     transformations = []
     for i in range(len(R)):
         t[i] = t[i].reshape(-1, 1)
-        transformations.append(np.hstack((R[i], t[i])))
+        # transformations.append(np.hstack((R[i], t[i])))
+        transformations.append(np.hstack((R[i].T, -R[i].T @ t[i].reshape(-1, 1))))
     return transformations
+
+def iiwa_position_set(context, plant, iiwa_controller, position_vector, model):    
+    #extract context from the diagram
+    # context = diagram.CreateDefaultContext()
+    #extract plant context from the full context
+    plant_context = plant.GetMyMutableContextFromRoot(context)
+    q0 = q0 = np.array(position_vector)
+    x0 = np.hstack((q0, 0*q0))
+    plant.SetPositions(plant_context, q0)
+
+    #get joints/links info
+    thetas = plant.GetPositions(plant_context)   #these will give angles
+    print('thetas between links :{}'.format(thetas))    #this will print theta between diff links
+
+    joint_pos = 1
+    joint_indices = plant.GetJointIndices(model)
+    joint = plant.get_joint(joint_indices[joint_pos])
+    f = joint.frame_on_parent()
+    # print('T matrix:{}'.format(f.GetFixedPoseInBodyFrame()))
+    # print('joint positon :{}'.format(joint.GetOnePosition(plant_context)))  #this will give just single theta
+    # print('joint at pos {}:{}'.format(joint_pos, joint))
+
+    iiwa_controller.GetInputPort('desired_state').FixValue(iiwa_controller.GetMyMutableContextFromRoot(context), x0)
+    return context, plant_context
+
+def orient_arms(plant, iiwa_controller, model, context, plant_context, position_vector):
+    #step1: get arm from scene
+    diagram_context = context #diagram.CreateDefaultContext()
+    # sensor_context = sensor.GetMyMutableContextFromRoot(diagram_context)
+    # sg_context = scene_graph.GetMyMutableContextFromRoot(diagram_context)
+
+    # color = sensor.color_image_output_port().Eval(sensor_context).data   #rgb image
+    # depth = sensor.depth_image_32F_output_port().Eval(sensor_context).data.squeeze(2)
+
+    #step2: change individual link positions
+    # iiwa_controller = iiwa_controller_fn(builder, plant, model)
+    # print(position_vector)
+    context, plant_context = iiwa_position_set(context, plant, iiwa_controller, position_vector, model)
+    return context, plant_context
+
+def iiwa_controller_fn(builder, plant, model):
+    Kp = np.full(7, 100)
+    Ki = 2 * np.sqrt(Kp)
+    Kd = np.full(7, 1)
+    iiwa_controller = builder.AddSystem(InverseDynamicsController(plant, Kp, Ki, Kd, False))
+    iiwa_controller.set_name("iiwa_controller")
+    #create feedback loop
+    #plant state output to controller input
+    #controller output to plant actuation input
+    builder.Connect(plant.get_state_output_port(model),
+                    iiwa_controller.get_input_port_estimated_state())
+    builder.Connect(iiwa_controller.get_output_port_control(),
+                    plant.get_actuation_input_port())
+
+    return iiwa_controller
+
+def get_3d_joints(plant_context, joint_frames):
+    #compute relative T b.w each of joint of iiwa links wrt first joint of iiwa_link_0 as we welded first joint of iiwa_link_0 to world frame in plant
+    joint_poses_wrt_joint0 = []
+    for i in range(8):
+        joint_poses_wrt_joint0.append((joint_frames[i].CalcPoseInWorld(plant_context)).translation())
+    joint_poses_wrt_joint0 = np.array(joint_poses_wrt_joint0)
+    return joint_poses_wrt_joint0
+
+def get_key_points_3d_from_camera_pose(plant, plant_context, model):
+    # get 3d points in that particular arm conf
+    joint_frames = []  #these are frames at each of joint of model in plant
+    for i in range(8):
+        joint_frames.append(plant.GetFrameByName("iiwa_link_" + str(i) , model))
+    key_points_3d = get_3d_joints(plant_context, joint_frames)
+    return key_points_3d
 
 # Returns a diagram which is consumed by simulator.
 def create_scene(sim_time_step=0.0001):
+
+    # Arm configuration
+    arm_positions = [[1.8, 0.3, 1.5, 0.6, 0.3, 0.6, 3.1]]
+
     # Clean up MeshCat.
     meshcat.Delete()
     meshcat.DeleteAddedControls()
@@ -280,7 +358,9 @@ def create_scene(sim_time_step=0.0001):
 
     #fix the camera_2 position in world frame
     #X_WB = xyz_rpy_deg([2, 0, 0.75], [-90, 0, 90])   #for first camera
-    X_WB_2 = xyz_rpy_deg([1.9, 0.1, 0.75], [-90, 0, 90])   
+    X_WB_2 = xyz_rpy_deg([2.0, 0.0, 0.75], [-90, 0, 90])
+    delta_wrt_world_z = xyz_rpy_deg([0, 0, 0], [0, 0, 20])
+    X_WB_2 = delta_wrt_world_z @ X_WB_2   
     R.append(np.array(X_WB_2.rotation().matrix()))
     t.append(X_WB_2.translation())
 
@@ -305,8 +385,13 @@ def create_scene(sim_time_step=0.0001):
     #create list of sensors
     sensors = [sensor_1, sensor_2]
 
+ 
     # Finalize the plant after loading the scene.
     plant.Finalize()
+
+    # Initialize Controller
+    iiwa_controller = iiwa_controller_fn(builder, plant, iiwa_1)
+   
     # We use the default context to calculate the transformation of the table
     # in world frame but this is NOT the context the Diagram consumes.
     plant_context = plant.CreateDefaultContext()
@@ -322,7 +407,11 @@ def create_scene(sim_time_step=0.0001):
     # sensors.append(CameraSystem(0, meshcat, diagram, context))
     # sensors.append(CameraSystem(1, meshcat, diagram, context))
 
-    return diagram, visualizer, scene_graph, sensors, transformations, intrinsics, R, t
+    # orient the arm
+    arm_position_index = 0
+    context, plant_context = orient_arms(plant, iiwa_controller, iiwa_1, diagram.CreateDefaultContext(), plant_context, arm_positions[arm_position_index])
+
+    return diagram, visualizer, plant, scene_graph, sensors, context, plant_context, iiwa_1, transformations, intrinsics, R, t
 
 
 def initialize_simulation(diagram):
@@ -375,24 +464,47 @@ def triangulation_DLT(P1, P2, kp1, kp2):
         ]
     A = np.array(A).reshape((4,4))
     B = A.transpose() @ A
-    from scipy import linalg
     U, s, Vh = linalg.svd(B, full_matrices = False)
 
     #print('Triangulated point: ')
     #print(Vh[3,0:3]/Vh[3,3])
     return Vh[3,0:3]/Vh[3,3]
 
+def overlay_3d_points_on_image(key_points_3d, P, img, name=0):
+    n_points = key_points_3d.shape[0]
+    kp_homogneous_3d = np.c_[key_points_3d, np.ones(n_points).reshape(-1, 1)]  #n*4
+    # print('Projection matrix: {}'.format(P))
+    kp_homogenous_2d = np.dot(P, kp_homogneous_3d.T)  #3*n
+    kp_homogenous_2d = kp_homogenous_2d.T  #n*3
+    kp_homogenous_2d = kp_homogenous_2d / (kp_homogenous_2d[: ,2].reshape(-1, 1))
+    key_points_2d = kp_homogenous_2d[:, :2]  #n*2
+
+    #overlay 2d kps on image (use below snippet just for testing)
+
+    print('img_shape:{}'.format(img.shape))
+    for kp_2d in key_points_2d:
+        print('kp_2d: {}'.format(kp_2d))
+        img = cv2.circle(img, (int(np.float32(kp_2d[0])), int(np.float32(kp_2d[1]))), radius=3, color=(0,0,255), thickness=-1)
+    # save with 2d points on image
+    cv2.imwrite("3D points overlaid - " + name + ".jpg", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+
+def loss_3d_points(reconstructed_pts, groundtruth_pts):
+    # L2 Norm
+    return np.linalg.norm(groundtruth_pts - reconstructed_pts)
+
+
 # Capture 
 def run_simulation(args, sim_time_step):
+    import time
     images_sensors = []
     #initalize count of pics taken in simulation
     sim_count_pic = 1
 
-    diagram, visualizer, scene_graph, sensors, transformations, instrinsics, R, t = create_scene(sim_time_step)
+    diagram, visualizer, plant, scene_graph, sensors, context, plant_context, model, transformations, instrinsics, R, t = create_scene(sim_time_step)
 
     simulator = initialize_simulation(diagram)
-    color1, depth1 = takePic(scene_graph, sensors[0], diagram.CreateDefaultContext(), 1, sim_count_pic)
-    color2, depth2 = takePic(scene_graph, sensors[1], diagram.CreateDefaultContext(), 2, sim_count_pic)
+    color1, depth1 = takePic(scene_graph, sensors[0], context, 1, sim_count_pic)
+    color2, depth2 = takePic(scene_graph, sensors[1], context, 2, sim_count_pic)
 
     #give custom image
 
@@ -404,13 +516,15 @@ def run_simulation(args, sim_time_step):
     # Run network inference
     kp_names = []
     for i in range(2):
-        start_time = time.time()
         args.image_path = "camera_" + str(i + 1) + "_" + "img_" + str(sim_count_pic) + ".jpg"
         args.camera_number = i + 1
         args.simulator_pic_count = sim_count_pic
         ##(640, 480) is color1, colo2 dimensions
+
+        start_time = time.time()
         key_points_wrt_images["camera" + str(i)], kp_names = network_inference(args)
         end_time = time.time()
+        
         print('time taken for camera {}: {}'.format(i+1, end_time-start_time))
         # print('keypoint names: {}'.format(keypoiint_names))
 
@@ -448,11 +562,24 @@ def run_simulation(args, sim_time_step):
         keypoints_2 = kps2_copy[~indices_to_be_removed]
         kp_names = kp_names[~indices_to_be_removed]
 
-        print('3d kps for camera pair {}, {}'.format(camera_1_idx, camera_2_idx))
+        print('3d kps for camera pair using DLT triangulation{}, {}'.format(camera_1_idx, camera_2_idx))
+        reconstructed_3D_points = []
         for kp1, kp2, name in zip(keypoints_1, keypoints_2, kp_names):
             reconstructed_3d_point = triangulation_DLT(Projection_matrices[camera_1_idx], Projection_matrices[camera_2_idx], kp1, kp2)
             print('{}: {}'.format(name, reconstructed_3d_point))
+            reconstructed_3D_points.append(reconstructed_3d_point)
 
+        ground_truth_3d_points = get_key_points_3d_from_camera_pose(plant, plant_context, model)
+        print('ground truth 3d points: \n{}'.format(ground_truth_3d_points))
+        print(f'reconstructed_3d_points: \n{np.array(reconstructed_3D_points)}')
+
+        overlay_3d_points_on_image(ground_truth_3d_points, Projection_matrices[camera_1_idx], copy.deepcopy(color1), "gt-0")
+        overlay_3d_points_on_image(ground_truth_3d_points, Projection_matrices[camera_2_idx], copy.deepcopy(color2), "gt-1")
+
+        overlay_3d_points_on_image(np.array(reconstructed_3D_points), Projection_matrices[camera_1_idx], copy.deepcopy(color1), "pred-0")
+        overlay_3d_points_on_image(np.array(reconstructed_3D_points), Projection_matrices[camera_2_idx], copy.deepcopy(color2), "pred-1")
+
+        print(f"Error: {loss_3d_points(np.array(reconstructed_3D_points), ground_truth_3d_points)}")
         #find way to refine the 3d kps (we expect 3d kps to be very similar for all pairs of cameras in setup ), this is not bundle adjustment as we precisely know camera positions in our setup
 
     # model_file = 'clutter_maskrcnn_model.pt'
@@ -531,9 +658,23 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Run the simulation with a small time step. Try gradually increasing it!
-    #capture images from diff sensors
-    image_sensors = []   #this is list of image_sets taken from diff sensors. 
-    image_sensors = run_simulation(args, sim_time_step=0.0001)  
+    # capture images from diff sensors
+    image_sensors = []   # this is list of image_sets taken from diff sensors. 
+    image_sensors = run_simulation(args, sim_time_step=0.0001)
 
 #python Ropoes_project_code/DrakeDataCapture/joints_extraction_3d.py -i /home/jayaram/robot_manipulation_drake/trained_models/kuka_retrained_on_straight_conf.pth
 
+#python DrakeDataCapture/joints_extraction_3d.py -i BestTrainedModels/Ropoes-Dataset-3850-epochs40-Date-26-11-2022/best_network.pth
+
+
+            # from mpl_toolkits import mplot3d
+            # import numpy as np
+            # import matplotlib.pyplot as plt
+            # fig = plt.figure()
+            # # syntax for 3-D projection
+            # ax = plt.axes(projection ='3d')
+            # # defining all 3 axes
+            # # plotting
+            # ax.plot3D(np.array(reconstructed_3D_points)[:,0], np.array(reconstructed_3D_points)[:,1], np.array(reconstructed_3D_points)[:,2], 'green')
+            # ax.set_title('3D line plot geeks for geeks')
+            # plt.show()
